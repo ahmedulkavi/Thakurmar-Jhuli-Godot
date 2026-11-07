@@ -1,5 +1,23 @@
 # Generated art prompts
 
+## Animated forest shade — `forest-shade-animations.png`
+
+Generated using the built-in `image_gen` tool with `transparent_background: true` and `forest-shade.png` as the identity/style reference. The original 1261 × 1247 RGBA source is preserved. The 4 × 4 atlas contains idle (0), walk (1–4), attack windup (5–6), lunge/swipe (7–8), recovery (9), jump anticipation (10), rise (11), fall (12), landing (13), hurt (14), and collapse (15). Runtime foot registration preserves the crouching and jumping poses at the current enemy height of 136.5 pixels.
+
+Final prompt:
+
+Use case: stylized-concept.
+Asset type: transparent full-body 2D ENEMY ANIMATION SHEET for a hand-painted forest platformer, exactly FOUR columns by FOUR rows, sixteen equally sized square cells.
+Reference image 1 is the existing forest shade enemy. Preserve its exact identity and hand-painted art style: squat stocky creature of twisted banyan roots and layered dark moss, two luminous mint eyes inside a shadowy hollow face, short branching wooden horns, long clawed root arms, two sturdy ragged root feet, restrained wisps of teal mist. Same dark teal, olive moss, earthy bark highlights and cyan rim light. This enemy is 137 pixels tall in the game, slightly taller than the prince.
+Primary request: sixteen distinctly readable ACTION POSES of this SAME creature in three-quarter SIDE VIEW facing RIGHT in every cell. This is sprite animation, not sixteen identical idle pictures. Its root legs bend and step, upper body twists, claw arms reach and sweep, moss and small tendrils follow the movement. Maintain identical body proportions, horn shapes, eye placement, painting, size and camera. No prince, no weapons, no scenery.
+Read cells left-to-right, then top-to-bottom; frame numbers here are instructions, NOT text to draw:
+ROW 1: frame 0 idle alert stance, balanced on both root feet, claws held loosely ahead. Frame 1 walking right, right foot forward left foot back, opposing claw-arm swing. Frame 2 walking compression/passing pose, left root knee swings through, torso lowers slightly. Frame 3 walking right, left foot reaches forward, right foot pushes off, opposing claws shift.
+ROW 2: frame 4 walk passing/up pose completing the four-frame walking loop. Frame 5 ATTACK WINDUP, knees flex and trunk coils, attacking right claw draws far BACK above shoulder while free claw balances forward. Frame 6 attack windup fully loaded, trunk twists further back, right claw ready to sweep. Frame 7 LUNGE AND SWIPE, weight drives forward, right claw slashes forward across chest height, front root leg reaches, body twists toward right.
+ROW 3: frame 8 swipe follow-through, right claw sweeps low and forward, back claw trails. Frame 9 attack recovery, weight settles and claw retracts toward alert stance. Frame 10 JUMP ANTICIPATION, deeply crouched root knees, trunk compressed and claws lowered ready to push off. Frame 11 RISING JUMP, root legs tuck underneath and claws spread for balance, trunk stretches upward.
+ROW 4: frame 12 FALLING JUMP, feet extend downward to prepare for landing, claws forward for balance. Frame 13 LANDING, root knees bent under weight, body squashes, moss and small tendrils settle. Frame 14 HURT RECOIL, body bends backward and claws flinch, feet remain recognizable. Frame 15 DEFEAT, body collapses low into a heap of curled roots and moss, horns and face still recognizable, eyes fading. No gore or detached limbs.
+Registration: exactly one full-body creature per cell, whole claws and horn tips inside that cell, generous empty margins, no overlap between cells. Same fully upright height in all standing frames, soles on a common invisible baseline at 90% of cell height, crown/horn tops about 12% in standing poses. Jump feet may lift naturally above this baseline; crouch, landing, and death must be lower. Hips stay horizontally centered so the body does not slide between poses. Truly transparent alpha-zero background outside actual sprites, clean edges without white/gray/color matte or haze. No ground, cast shadows, labels, numbers, grids, borders, text or watermark. No enormous glow halos. Painterly animation consistent with the supplied reference, not vector art, not pixel art, not glossy 3D.
+
+
 Generated using the built-in image-generation tool. Source assets, runtime images, and final prompts are stored in this project. Transparent assets preserve their alpha; sprite sheets are sliced or framed with Godot atlas regions for use in the game.
 
 ## Armed locomotion — `prince-armed-locomotion.png`
@@ -86,7 +104,7 @@ Use case: stylized-concept. 2D side scrolling platform game ground tile. A horiz
 
 ## Forest shade — `forest-shade.png`
 
-Generated with the built-in `image_gen` tool with `transparent_background: true`. The original alpha is preserved. Godot frames the painted silhouette at 78 pixels tall using a sprite region that excludes faint alpha haze at the canvas edges. Mipmaps keep the small sprite smooth; breathing, facing, warning tint, and damage flashes are animated in code.
+Generated with the built-in `image_gen` tool with `transparent_background: true`. The original alpha is preserved. This single-pose sprite is retained as the identity and style reference for `forest-shade-animations.png`; the animated enemy now stands 136.5 game pixels tall.
 
 Final prompt:
 

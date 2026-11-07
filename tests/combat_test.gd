@@ -60,8 +60,9 @@ func _run() -> void:
 	await _frames(12)
 	mouse.pressed = false
 	Input.parse_input_event(mouse)
-	_check(front.health == 0 and not front.visible and front.collision_layer == 0, "Mouse attack defeats a shade and removes its hitbox")
-	await _frames(20)
+	_check(front.health == 0 and front.state == &"dead" and front.collision_layer == 0, "Mouse attack starts defeat and immediately removes the shade's hitbox")
+	await _frames(24)
+	_check(not front.visible, "Defeated shade disappears after its collapse animation")
 	Input.action_press("move_left")
 	await _frames(2)
 	Input.action_release("move_left")

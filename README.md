@@ -29,6 +29,8 @@ After pickup, movement uses eight running poses with a natural forward-and-back 
 
 The health bar starts at 100. A shade's lunge deals 20 damage, knocks the prince back, and grants one second of protection with a flashing sprite. At zero health, use **Try Again** or **R** to restart. Restart restores health, enemies, and the sword pickup. Pause freezes combat along with movement.
 
+Shades use painted walking, attack, jump, landing, recoil, and collapse poses. They notice the prince through line of sight, remember him for four seconds after losing sight, and pursue until he escapes their range or stays hidden. While chasing, they crouch and jump over the log, rocks, and raised root. Terrain probes prevent jumps into tall walls or low ceilings, and enemies return to their starting positions after pursuit ends. Attacks have a committed direction and a recovery period; sword hits interrupt them. Defeat removes the hitbox immediately, then plays a short collapse and fade.
+
 ## Project layout
 
 - `scenes/main.tscn` — adaptive window and interface, game viewport with 1280 × 720 logical coordinates and native display rendering, and vignette.
@@ -38,7 +40,8 @@ The health bar starts at 100. A shade's lunge deals 20 damage, knocks the prince
 - `scripts/player.gd` — exported movement settings and jump behavior.
 - `scripts/prince_combat_visual.gd` — armed running (`assets/prince-armed-run-v2.png`), jump/landing/recoil (`assets/prince-armed-locomotion.png`), and slash/thrust poses (`assets/prince-combat-sheet.png`), plus blade trails and impact sparks.
 - `scripts/sword_visual.gd` and `scripts/sword_pickup.gd` — glowing sword pickup and automatic collection on the raised root.
-- `scripts/forest_enemy.gd` — shades, telegraphed lunges, damage, and defeat.
+- `scripts/forest_enemy.gd` — shade awareness, pursuit, obstacle jumps, committed lunges, damage, and defeat.
+- `scripts/forest_enemy_visual.gd` — registered enemy movement and action poses using `assets/forest-shade-animations.png`.
 - `scripts/forest.gd` — journey reset, camera tracking, goal detection, and mist tweens.
 - `scripts/main.gd` — native Godot interface, input, pause, and completion flow.
 - `assets/` — copies of the original artwork, source sheets, and art provenance. All runtime assets are here.
@@ -46,6 +49,7 @@ The health bar starts at 100. A shade's lunge deals 20 damage, knocks the prince
 - `tests/combat_test.gd` — pickup, keyboard/mouse/controller attacks, hit direction and reach, damage protection, defeat, and reset checks.
 - `tests/combat_animation_test.gd` — windup and strike timing, alternating attacks, input buffering, pose mirroring, interrupts, and airborne combat checks.
 - `tests/resolution_test.gd` — adaptive rendering from 816 × 564 to QHD, aspect ratios, paused resizing, mouse coordinates, and native fullscreen checks.
+- `tests/enemy_ai_test.gd` — jumps over every obstacle in both directions, sight and pursuit memory, clearance checks, interrupts, defeat, pause, and reset.
 - `old-implementation/` — original browser implementation, excluded from Godot scanning with `.gdignore`.
 
 Godot handles character collisions, floor detection, animations, camera smoothing, three parallax layers, particle fireflies, UI focus, and pausing. Original artwork, level positions, and movement tuning are preserved, with sword combat added to the final stretch. The interface uses system serif and sans-serif fonts with fallbacks; proprietary font files are not bundled.
@@ -59,6 +63,7 @@ godot --headless --path . --script res://tests/gameplay_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/combat_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/combat_animation_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/resolution_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/enemy_ai_test.gd
 ```
 
 The suite checks floor and boundary collisions, keyboard restart, running animation, the log collision, pause/resume, full and short jumps, buffered jumps, coyote time, traversal of all three obstacles, camera tracking, completion, and restarting from pause and completion. A failed check returns a nonzero exit code.
@@ -70,6 +75,7 @@ godot --path . --script res://tests/gameplay_test.gd -- --capture
 godot --path . --script res://tests/combat_test.gd -- --capture
 godot --path . --script res://tests/combat_animation_test.gd -- --capture
 godot --path . --fixed-fps 60 --script res://tests/resolution_test.gd -- --capture
+godot --path . --fixed-fps 60 --script res://tests/enemy_ai_test.gd -- --capture
 ```
 
 Validated using Godot 4.7.2 with the Compatibility renderer. No external plugins are required.
