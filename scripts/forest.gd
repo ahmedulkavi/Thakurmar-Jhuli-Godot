@@ -7,13 +7,18 @@ const WORLD_WIDTH: float = 3840.0
 const GROUND_Y: float = 586.0
 const START := Vector2(170.0, GROUND_Y)
 const GOAL_X: float = 3550.0
+const SWORD_PICKUP = preload("res://scripts/sword_pickup.gd")
+const FOREST_ENEMY = preload("res://scripts/forest_enemy.gd")
 
 @onready var player: ForestPrince = $Prince
 @onready var camera: Camera2D = $Camera
 var completed: bool = false
+var sword_pickup: Area2D
+var enemies: Array[CharacterBody2D] = []
 
 func _ready() -> void:
 	$Goal.body_entered.connect(_on_goal_entered)
+	_build_combat()
 	reset_journey()
 	_animate_atmosphere()
 
@@ -24,14 +29,31 @@ func _process(_delta: float) -> void:
 func reset_journey() -> void:
 	completed = false
 	player.reset_to(START)
+	sword_pickup.reset_pickup()
+	for enemy in enemies:
+		enemy.reset_enemy()
 	camera.position = Vector2(640.0, 360.0)
 	camera.reset_smoothing()
 	$Goal/Sparkles.restart()
 
 func _on_goal_entered(body: Node2D) -> void:
-	if body == player and not completed:
+	if body == player and player.health > 0 and not completed:
 		completed = true
 		journey_complete.emit()
+
+func _build_combat() -> void:
+	sword_pickup = Area2D.new()
+	sword_pickup.name = "SwordPickup"
+	sword_pickup.set_script(SWORD_PICKUP)
+	sword_pickup.position = Vector2(2650, 466)
+	add_child(sword_pickup)
+	for x in [3010.0, 3310.0]:
+		var enemy := CharacterBody2D.new()
+		enemy.set_script(FOREST_ENEMY)
+		enemy.position = Vector2(x, GROUND_Y)
+		enemy.player = player
+		add_child(enemy)
+		enemies.append(enemy)
 
 func _animate_atmosphere() -> void:
 	for i in range(9):
