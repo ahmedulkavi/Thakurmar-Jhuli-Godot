@@ -1,7 +1,10 @@
 extends CharacterBody2D
 ## Terrain-aware pursuit with committed, readable jumps and melee attacks.
 
+signal defeated(drop_position: Vector2, essence_value: int)
+
 const MAX_HEALTH: int = 4
+const ESSENCE_VALUE: int = 25
 const ATTACK_DAMAGE: int = 25
 const ATTACK_WINDUP: float = 0.24
 const ATTACK_ACTIVE_TIME: float = 0.14
@@ -243,6 +246,7 @@ func take_damage(amount: int, source: Vector2) -> void:
 		death_left = DEATH_DURATION
 		_set_state(&"dead")
 		set_deferred("collision_layer", 0)
+		defeated.emit(global_position + Vector2(0, -55), ESSENCE_VALUE)
 	queue_redraw()
 
 func reset_enemy() -> void:

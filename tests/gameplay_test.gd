@@ -179,15 +179,15 @@ func _run() -> void:
 	game.restart_journey()
 	await _frames(3)
 	# This checks the original traversal geometry; combat is covered separately.
-	for bat in game.forest.bats:
-		bat.set_physics_process(false)
+	for enemy in game.forest.enemies + game.forest.bats:
+		enemy.set_physics_process(false)
 	Input.action_press("move_right")
 	var next_obstacle: int = 0
-	var cleared: Array[bool] = [false, false, false, false]
-	var obstacle_x: Array[float] = [450.0, 910.0, 1810.0, 2650.0]
+	var cleared: Array[bool] = [false, false, false, false, false, false, false]
+	var obstacle_x: Array[float] = [450.0, 910.0, 1810.0, 2650.0, 4200.0, 4780.0, 5530.0]
 	var jump_held: int = 0
 	var saw_sword_reveal := false
-	for i in range(1200):
+	for i in range(2350):
 		await _frames(1)
 		if game.mode == &"complete":
 			break
@@ -210,11 +210,13 @@ func _run() -> void:
 			await _screenshot("forest-journey")
 	Input.action_release("move_right")
 	Input.action_release("jump")
+	if game.mode != &"complete":
+		print("TRAVERSAL DIAGNOSTICS: mode=%s position=%s velocity=%s obstacle=%s cleared=%s" % [game.mode, prince.position, prince.velocity, next_obstacle, cleared])
 	_check(saw_sword_reveal, "Collecting the sword pauses traversal for its item reveal")
-	_check(cleared.all(func(value: bool) -> bool: return value), "Prince clears the sword root and all three original obstacles using normal movement")
-	_check(game.mode == &"complete" and paused, "Reaching the banyan completes and pauses the game")
+	_check(cleared.all(func(value: bool) -> bool: return value), "Prince clears the original and extended forest obstacles using normal jumps")
+	_check(game.mode == &"complete" and paused, "Reaching the far exit completes and pauses the game")
 	_check(game.heading.text == "Forest path complete", "Completion presents the ending")
-	_check(game.forest.camera.position.x > 3000.0, "Camera follows the full route")
+	_check(game.forest.camera.position.x > 5900.0, "Camera follows the extended route")
 	await _screenshot("forest-complete")
 	game.primary.pressed.emit()
 	await _frames(3)

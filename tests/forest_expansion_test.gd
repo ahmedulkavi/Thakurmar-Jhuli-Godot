@@ -19,7 +19,7 @@ func _run() -> void:
 	for enemy in game.forest.enemies + game.forest.bats:
 		enemy.set_physics_process(false)
 	await _frames(5)
-	_check(game.forest.platforms.size() == 5 and game.forest.bats.size() == 3, "Forest contains five branches and three bats")
+	_check(game.forest.platforms.size() == 5 and game.forest.ladder_guardians.size() == 3, "The original staircase has five branches and three guardian bats")
 	_check(game.forest.sword_pickup.position.x < 500.0 and game.forest.get_node("SwordRoot").position.x == game.forest.sword_pickup.position.x, "Sword and anvil are together near the starting point")
 	await _capture("forest-expansion-start")
 	Input.action_press("move_right")

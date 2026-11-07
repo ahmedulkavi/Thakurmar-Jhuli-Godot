@@ -13,14 +13,14 @@ signal died
 const MAX_HEALTH: int = 100
 const MAX_STAMINA: float = 100.0
 const MAX_MAGIC: float = 100.0
-const ATTACK_STAMINA_COST: float = 25.0
+const ATTACK_STAMINA_COST: float = 15.0
 const MAGIC_PER_HIT: float = 20.0
 const HEAL_MAGIC_COST: float = 40.0
 const HEAL_AMOUNT: int = 30
 const HEAL_CHANNEL_TIME: float = 0.9
-const STAMINA_REGEN_RATE: float = 25.0
-const STAMINA_REGEN_DELAY: float = 0.55
-const STAMINA_EXHAUSTION_DELAY: float = 1.0
+const STAMINA_REGEN_RATE: float = 35.0
+const STAMINA_REGEN_DELAY: float = 0.50
+const STAMINA_EXHAUSTION_DELAY: float = 0.65
 const SWING_DURATION: float = 0.40
 const ATTACK_COOLDOWN: float = 0.44
 const SLASH_ACTIVE_START: float = 0.125
@@ -52,6 +52,10 @@ var stamina_regen_left: float = 0.0
 var has_sword: bool = false
 var has_amulet: bool = false
 var is_healing: bool = false
+var is_resting: bool = false
+var rest_art: Sprite2D
+var rest_elapsed := 0.0
+var rest_base_scale := 1.0
 var healing_elapsed: float = 0.0
 var heal_flash_left: float = 0.0
 var invulnerable_left: float = 0.0
@@ -79,6 +83,14 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	if health <= 0:
+		return
+	if is_resting:
+		velocity = Vector2.ZERO
+		rest_elapsed += delta
+		var breath := sin(rest_elapsed * 1.6)
+		rest_art.scale = Vector2(rest_base_scale * (1.0 - 0.004 * breath), rest_base_scale * (1.0 + 0.016 * breath))
+		rest_art.position.y = -68.0 - breath * 0.55
+		rest_art.rotation = sin(rest_elapsed * 0.8) * 0.012
 		return
 	invulnerable_left = maxf(0.0, invulnerable_left - delta)
 	knockback_left = maxf(0.0, knockback_left - delta)
@@ -168,11 +180,10 @@ func equip_amulet() -> void:
 	amulet_equipped.emit()
 
 func attack() -> bool:
-	if not has_sword or health <= 0 or get_tree().paused or is_climbing or is_healing:
+	if not has_sword or health <= 0 or get_tree().paused or is_climbing or is_healing or is_resting:
 		return false
 	if stamina <= 0.0:
-		# Each exhausted press restarts recovery, including during a paid swing.
-		stamina_regen_left = maxf(stamina_regen_left, STAMINA_EXHAUSTION_DELAY)
+		# Repeated inputs cannot postpone recovery while the prince is exhausted.
 		attack_buffer_left = 0.0
 		return false
 	if cooldown_left > 0.0 or swing_left > 0.0:
@@ -230,7 +241,7 @@ func _hit_sword_targets() -> void:
 		combat_visual.add_impact(target.global_position + Vector2(0, -42))
 
 func take_damage(amount: int, source: Vector2) -> bool:
-	if health <= 0 or invulnerable_left > 0.0 or amount <= 0 or get_tree().paused:
+	if health <= 0 or is_resting or invulnerable_left > 0.0 or amount <= 0 or get_tree().paused:
 		return false
 	health = maxi(0, health - amount)
 	_cancel_healing()
@@ -292,6 +303,7 @@ func _rock_slide_direction() -> float:
 	return 0.0
 
 func reset_to(start: Vector2) -> void:
+	stop_resting()
 	_stop_climbing()
 	position = start
 	velocity = Vector2.ZERO
@@ -328,6 +340,61 @@ func reset_to(start: Vector2) -> void:
 	stamina_changed.emit(stamina, MAX_STAMINA)
 	magic_changed.emit(magic, MAX_MAGIC)
 	queue_redraw()
+
+func begin_resting(at: Vector2, texture: Texture2D) -> void:
+	_cancel_healing()
+	_stop_climbing()
+	position = at
+	velocity = Vector2.ZERO
+	swing_left = 0.0
+	attack_buffer_left = 0.0
+	knockback_left = 0.0
+	invulnerable_left = 0.0
+	stamina = MAX_STAMINA
+	stamina_regen_left = 0.0
+	stamina_changed.emit(stamina, MAX_STAMINA)
+	health = MAX_HEALTH
+	health_changed.emit(health, MAX_HEALTH)
+	is_resting = true
+	animation.hide()
+	combat_visual.hide_pose()
+	$Shadow.hide()
+	if rest_art == null:
+		rest_art = Sprite2D.new()
+		rest_art.name = "RestingArt"
+		rest_art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		add_child(rest_art)
+	rest_art.texture = texture
+	var bounds := texture.get_image().get_used_rect()
+	rest_art.region_enabled = true
+	rest_art.region_rect = bounds
+	rest_base_scale = 96.0 / float(bounds.size.y)
+	rest_elapsed = 0.0
+	rest_art.scale = Vector2.ONE * rest_base_scale
+	rest_art.rotation = 0.0
+	# The pose's hips meet the fountain rim while the feet hang in front.
+	rest_art.position = Vector2(0, -68)
+	rest_art.show()
+
+func stop_resting() -> void:
+	if not is_resting:
+		return
+	is_resting = false
+	if rest_art:
+		rest_art.hide()
+	if animation:
+		animation.play(&"idle")
+		_update_combat_visuals()
+
+func recover_at_checkpoint(at: Vector2) -> void:
+	var sword := has_sword
+	var amulet := has_amulet
+	var saved_magic := magic
+	reset_to(at)
+	has_sword = sword
+	has_amulet = amulet
+	_set_magic(saved_magic, true)
+	_update_combat_visuals()
 
 func _set_magic(value: float, force_emit: bool = false) -> void:
 	var next := clampf(value, 0.0, MAX_MAGIC)

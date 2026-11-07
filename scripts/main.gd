@@ -7,6 +7,8 @@ const PAPER := Color("f0eddb")
 const MUTED := Color("93b3a2")
 const INTERFACE_SIZE := Vector2(1360, 940)
 const SWORD_REVEAL_VISUAL = preload("res://scripts/sword_visual.gd")
+const ESSENCE_COIN = preload("res://scenes/essence_coin.tres")
+const AMULET_TEXTURE = preload("res://assets/healing-amulet.png")
 
 @onready var interface: Control = $Interface
 @onready var forest: ForestLevel = $Interface/GameFrame/ViewportContainer/World/Forest
@@ -28,6 +30,7 @@ var combat_panel: Panel
 var health_bar: ProgressBar
 var stamina_bar: ProgressBar
 var magic_bar: ProgressBar
+var essence_count: Label
 var amulet_reveal: Control
 var reveal_shade: ColorRect
 var reveal_halo: Panel
@@ -61,9 +64,12 @@ func _ready() -> void:
 	forest.player.sword_equipped.connect(_on_sword_equipped)
 	forest.player.amulet_equipped.connect(_on_amulet_equipped)
 	forest.player.died.connect(_on_player_died)
+	forest.essence_changed.connect(_update_essence)
+	forest.essence_discovered.connect(_on_essence_discovered)
 	_update_health(forest.player.health, ForestPrince.MAX_HEALTH)
 	_update_stamina(forest.player.stamina, ForestPrince.MAX_STAMINA)
 	_update_magic(forest.player.magic, ForestPrince.MAX_MAGIC)
+	_update_essence(forest.essence)
 	world_image.texture = world.get_texture()
 	get_viewport().size_changed.connect(_queue_display_resize)
 	resized.connect(_queue_display_resize)
@@ -98,6 +104,17 @@ func _input(event: InputEvent) -> void:
 				reveal_tween.kill()
 			_release_actions()
 			_finish_item_reveal()
+		return
+	if mode == &"playing" and forest.player.is_resting:
+		if (event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton or event is InputEventScreenTouch) and event.is_pressed() and not event.is_echo():
+			get_viewport().set_input_as_handled()
+			_release_actions()
+			forest.player.stop_resting()
+		return
+	if mode == &"playing" and event.is_action_pressed("interact") and not event.is_echo():
+		if forest.try_rest():
+			get_viewport().set_input_as_handled()
+			_release_actions()
 		return
 	if event.is_action_pressed("restart"):
 		restart_journey()
@@ -156,6 +173,12 @@ func _update_magic(current: float, maximum: float) -> void:
 	magic_bar.visible = forest.player.has_amulet
 	combat_panel.size.y = 58.0 if forest.player.has_amulet else 41.0
 
+func _update_essence(amount: int) -> void:
+	essence_count.text = str(amount)
+
+func _on_essence_discovered() -> void:
+	_show_item_reveal(&"essence")
+
 func _on_amulet_equipped() -> void:
 	_update_magic(forest.player.magic, ForestPrince.MAX_MAGIC)
 	_show_item_reveal(&"amulet")
@@ -180,6 +203,7 @@ func resume_journey() -> void:
 	get_tree().paused = false
 
 func restart_journey() -> void:
+	var use_checkpoint := mode == &"defeated" and forest.checkpoint_active
 	if reveal_tween and reveal_tween.is_valid():
 		reveal_tween.kill()
 	amulet_reveal.hide()
@@ -189,11 +213,14 @@ func restart_journey() -> void:
 	primary.release_focus()
 	pause_button.disabled = false
 	_release_actions()
-	forest.reset_journey()
+	if use_checkpoint:
+		forest.recover_at_fountain()
+	else:
+		forest.reset_journey()
 	get_tree().paused = false
 
 func _release_actions() -> void:
-	for action in [&"move_left", &"move_right", &"move_up", &"move_down", &"jump", &"attack", &"heal"]:
+	for action in [&"move_left", &"move_right", &"move_up", &"move_down", &"jump", &"attack", &"heal", &"interact"]:
 		Input.action_release(action)
 
 func _build_chrome() -> void:
@@ -224,6 +251,7 @@ func _build_chrome() -> void:
 	pause_button.pressed.connect(pause_journey)
 	frame.add_child(pause_button)
 	_build_combat_hud()
+	_build_essence_hud()
 	var x: float = 40
 	for group in [["←", "→", "or", "A", "D", "MOVE"], ["SPACE", "JUMP"], ["J / X", "ATTACK"], ["H", "HEAL"], ["ESC", "PAUSE"], ["R", "RESTART"]]:
 		for token: String in group:
@@ -248,6 +276,30 @@ func _build_chrome() -> void:
 				x += width + 6
 	_label(interface, "Find your way to the light", Vector2(1093, 874), 15, Color("8aa59a"), italic)
 	_label(interface, "✦", Vector2(1302, 872), 20, GOLD)
+
+func _build_essence_hud() -> void:
+	var panel := Panel.new()
+	panel.name = "EssenceCounter"
+	panel.position = Vector2(1130, 76)
+	panel.size = Vector2(120, 44)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_theme_stylebox_override("panel", _box(Color(0.035, 0.09, 0.10, 0.86), Color("526d73"), 5))
+	frame.add_child(panel)
+	var icon := TextureRect.new()
+	icon.name = "EssenceIcon"
+	icon.texture = ESSENCE_COIN
+	icon.position = Vector2(4, 2)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(icon)
+	icon.size = Vector2(40, 40)
+	essence_count = _label(panel, "0", Vector2(46, 7), 21, Color("effaff"))
+	essence_count.name = "Amount"
+	essence_count.size = Vector2(64, 30)
+	essence_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	essence_count.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 func _build_combat_hud() -> void:
 	combat_panel = Panel.new()
@@ -300,7 +352,7 @@ func _build_amulet_reveal() -> void:
 	reveal_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	reveal_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	reveal_art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	reveal_art.texture = preload("res://assets/healing-amulet.png")
+	reveal_art.texture = AMULET_TEXTURE
 	amulet_reveal.add_child(reveal_art)
 	reveal_art.position = Vector2(515, 88)
 	reveal_art.size = Vector2(250, 250)
@@ -312,6 +364,7 @@ func _build_amulet_reveal() -> void:
 	amulet_reveal.add_child(reveal_sword)
 	reveal_sword.hide()
 	reveal_title = _label(amulet_reveal, "HEALING AMULET AWAKENED", Vector2(240, 390), 29, Color("d8f5ff"), serif)
+	reveal_title.z_index = 1
 	reveal_title.size = Vector2(800, 48)
 	reveal_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	reveal_title.add_theme_constant_override("outline_size", 7)
@@ -338,8 +391,18 @@ func _show_item_reveal(item: StringName) -> void:
 	var sword_reveal := item == &"sword"
 	reveal_art.visible = not sword_reveal
 	reveal_sword.visible = sword_reveal
-	reveal_title.text = "FOREST BLADE AWAKENED" if sword_reveal else "HEALING AMULET AWAKENED"
-	reveal_copy.text = "Allows the user to wield the Forest Blade." if sword_reveal else "Allows the user the magic of healing."
+	match item:
+		&"sword":
+			reveal_title.text = "FOREST BLADE AWAKENED"
+			reveal_copy.text = "Allows the user to wield the Forest Blade."
+		&"essence":
+			reveal_art.texture = ESSENCE_COIN
+			reveal_title.text = "ESSENCE DISCOVERED"
+			reveal_copy.text = "Essence is gathered from the spirits of fallen foes."
+		_:
+			reveal_art.texture = AMULET_TEXTURE
+			reveal_title.text = "HEALING AMULET AWAKENED"
+			reveal_copy.text = "Allows the user the magic of healing."
 	var item_art: CanvasItem = reveal_sword if sword_reveal else reveal_art
 	var final_scale := Vector2.ONE * (4.0 if sword_reveal else 1.0)
 	item_art.modulate.a = 0.0

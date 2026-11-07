@@ -29,7 +29,7 @@
 shader = ExtResource("12")
 
 [sub_resource type="RectangleShape2D" id="Shape_Floor"]
-size = Vector2(3840, 140)
+size = Vector2(7200, 140)
 
 [sub_resource type="RectangleShape2D" id="Shape_Wall"]
 size = Vector2(40, 1000)
@@ -94,10 +94,10 @@ texture_repeat = 2
 texture = ExtResource("7")
 centered = false
 region_enabled = true
-region_rect = Rect2(0, 0, 8534, 334)
+region_rect = Rect2(0, 0, 16000, 334)
 
 [node name="Floor" type="StaticBody2D" parent="."]
-position = Vector2(1920, 656)
+position = Vector2(3600, 656)
 collision_layer = 1
 collision_mask = 0
 
@@ -113,7 +113,7 @@ collision_mask = 0
 shape = SubResource("Shape_Wall")
 
 [node name="RightBoundary" type="StaticBody2D" parent="."]
-position = Vector2(3860, 300)
+position = Vector2(7220, 300)
 collision_layer = 1
 collision_mask = 0
 
@@ -180,25 +180,25 @@ texture = ExtResource("10")
 [node name="Banyan" type="Sprite2D" parent="."]
 z_index = -3
 material = SubResource("Material_Banyan")
-position = Vector2(3580, 394)
+position = Vector2(6330, 394)
 scale = Vector2(0.518807, 0.581395)
 texture = ExtResource("11")
 
 [node name="TreeGlow" type="Sprite2D" parent="."]
-position = Vector2(3550, 574)
+position = Vector2(6350, 574)
 scale = Vector2(3, 0.7)
 modulate = Color(0.97, 0.85, 0.5, 0.26)
 texture = ExtResource("3")
 
 [node name="Fireflies" type="CPUParticles2D" parent="."]
 z_index = 3
-position = Vector2(1920, 310)
+position = Vector2(3600, 310)
 amount = 38
 lifetime = 6.0
 preprocess = 6.0
 texture = ExtResource("3")
 emission_shape = 3
-emission_rect_extents = Vector2(1820, 210)
+emission_rect_extents = Vector2(3500, 210)
 direction = Vector2(0, -1)
 spread = 55.0
 gravity = Vector2(0, 0)
@@ -209,7 +209,7 @@ scale_amount_max = 0.11
 color = Color(0.85, 0.96, 0.64, 0.7)
 
 [node name="Goal" type="Area2D" parent="."]
-position = Vector2(3600, 360)
+position = Vector2(7020, 360)
 collision_layer = 0
 collision_mask = 2
 
@@ -243,5 +243,5 @@ position_smoothing_enabled = true
 position_smoothing_speed = 5.0
 limit_left = 0
 limit_top = -260
-limit_right = 3840
+limit_right = 7200
 limit_bottom = 720

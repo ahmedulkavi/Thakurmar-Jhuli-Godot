@@ -1,5 +1,13 @@
 # Generated art prompts
 
+## Essence coin
+
+`essence-coin.png` is a transparent moonlit white-silver spirit coin with a glowing flame emblem, generated for the currency pickup and HUD.
+
+## Fountain rest point
+
+`moss-fountain.png` is a transparent painted sprite of a weathered lotus-carved stone fountain with moss, vines, clear running water and a wide sitting rim, generated to match the existing forest art. `prince-resting.png` depicts the existing prince seated with a sheathed sword; `prince-resting-unarmed.png` is an edited version with the sword removed for players who have not collected it.
+
 ## Prince climb up and down — `prince-climb-sheet.png`
 
 Generated from `prince-armed-locomotion.png` as a style and identity reference, then edited to remove the ladder pictured in the first generation. The final transparent 4 × 2 sheet has four upward poses in the first row and four downward poses in the second. The sword is secured on the prince's back at a consistent size while he climbs.

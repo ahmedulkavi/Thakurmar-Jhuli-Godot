@@ -27,13 +27,13 @@ func _run() -> void:
 	_check(not prince.attack() and prince.stamina == 100.0 and prince.stamina_regen_left == 0.0, "Unarmed attack attempts spend no stamina or regeneration delay")
 	prince.equip_sword()
 	await _screenshot("stamina-full")
-	_check(prince.attack() and prince.stamina == 75.0 and game.stamina_bar.value == 75.0, "Starting a sword attack spends 25 stamina and updates the HUD immediately")
+	_check(prince.attack() and prince.stamina == 85.0 and game.stamina_bar.value == 85.0, "Starting a sword attack spends 15 stamina and updates the HUD immediately")
 	var delay := prince.stamina_regen_left
-	_check(not prince.attack() and prince.stamina == 75.0 and prince.stamina_regen_left == delay, "Cooldown rejection cannot charge stamina twice or restart regeneration")
-	await _frames(30)
-	_check(prince.stamina == 75.0 and prince.swing_left <= 0.0, "Stamina stays spent during the short delay after attacking")
+	_check(not prince.attack() and prince.stamina == 85.0 and prince.stamina_regen_left == delay, "Cooldown rejection cannot charge stamina twice or restart regeneration")
+	await _frames(28)
+	_check(prince.stamina == 85.0 and prince.swing_left <= 0.0, "Stamina stays spent during the short delay after attacking")
 	await _frames(10)
-	_check(prince.stamina > 75.0 and prince.stamina < 80.0, "Normal regeneration begins shortly after the shortened delay")
+	_check(prince.stamina > 85.0 and prince.stamina < 92.0, "Normal regeneration begins shortly after the attack")
 
 	# A follow-up only spends its cost when the next attack actually starts.
 	_reset_armed()
@@ -41,51 +41,51 @@ func _run() -> void:
 	await _frames(20)
 	_key(KEY_J, true)
 	await _frames(1)
-	_check(prince.attack_buffer_left > 0.0 and prince.stamina == 75.0, "Queuing a follow-up does not spend stamina early")
+	_check(prince.attack_buffer_left > 0.0 and prince.stamina == 85.0, "Queuing a follow-up does not spend stamina early")
 	await _frames(10)
 	_key(KEY_J, false)
-	_check(prince.attack_kind == &"thrust" and prince.stamina == 50.0, "Buffered thrust spends its own stamina exactly once on execution")
+	_check(prince.attack_kind == &"thrust" and prince.stamina == 70.0, "Buffered thrust spends its own stamina exactly once on execution")
 	await _frames(28)
-	_check(prince.stamina == 50.0, "Finishing the queued animation adds no extra stamina charge")
+	_check(prince.stamina >= 70.0 and prince.stamina < 75.0, "Finishing the queued animation adds no extra stamina charge")
 
-	# Four full-cost attacks exhaust the pool. Fresh exhausted presses penalize
-	# recovery, while a held button neither repeats nor queues an attack.
+	# A full sequence can defeat a shade and still leave several attacks.
 	_reset_armed()
 	var all_attacks_started := true
-	for i in range(4):
+	for i in range(7):
 		all_attacks_started = prince.attack() and all_attacks_started
 		await _frames(27)
-	_check(all_attacks_started and prince.stamina == 0.0, "Four rapid attacks use the full stamina pool without going negative")
-	_check(prince.stamina_regen_left <= ForestPrince.STAMINA_REGEN_DELAY, "Spending exactly 25 on the last attack keeps the normal recovery delay")
+	_check(all_attacks_started and prince.stamina == 0.0, "Seven rapid attacks exhaust the pool without going negative")
+	_check(prince.stamina_regen_left > 0.0 and prince.stamina_regen_left < ForestPrince.STAMINA_EXHAUSTION_DELAY, "The final overdraw begins a brief recovery delay")
 	_check(game.stamina_bar.value == 0.0, "Exhausted stamina bar is empty")
 	await _screenshot("stamina-exhausted")
 	delay = prince.stamina_regen_left
 	_key(KEY_J, true)
 	await _frames(1)
 	_check(prince.swing_left == 0.0 and prince.attack_buffer_left == 0.0 and prince.stamina == 0.0, "Exhausted attack input starts no swing and leaves no queued follow-up")
-	_check(prince.stamina_regen_left > delay and prince.stamina_regen_left > 0.95, "Exhausted input restarts the longer 1-second regeneration delay")
+	_check(prince.stamina_regen_left < delay, "Exhausted input does not restart the recovery delay")
 	var start_x := prince.position.x
 	Input.action_press("move_right")
 	Input.action_press("jump")
-	await _frames(12)
-	_check(prince.position.x > start_x + 20.0 and prince.position.y < 580.0 and prince.stamina == 0.0, "Running and jumping remain available with zero stamina")
+	await _frames(8)
+	_check(prince.position.x > start_x + 5.0 and prince.position.y < 580.0, "Running and jumping remain available while exhausted")
 	Input.action_release("move_right")
 	Input.action_release("jump")
 	await _frames(150)
-	_check(prince.stamina > 35.0 and prince.stamina < 50.0 and prince.swing_left == 0.0, "Stamina regenerates after the delay, and holding rejected attack input cannot auto-attack")
+	_check(prince.stamina > 70.0 and prince.stamina < 100.0 and prince.swing_left == 0.0, "Stamina recovers quickly, and holding rejected attack input cannot auto-attack")
 	_key(KEY_J, false)
 	_check(is_equal_approx(game.stamina_bar.value, prince.stamina), "HUD follows regenerating stamina")
+	prince._set_stamina(40.0)
 	var before := prince.stamina
 	await _frames(30)
-	_check(absf(prince.stamina - before - 12.5) < 0.5, "Regeneration restores 25 stamina per second")
+	_check(absf(prince.stamina - before - 17.5) < 0.6, "Regeneration restores 35 stamina per second")
 	before = prince.stamina
-	_check(prince.attack() and is_equal_approx(prince.stamina, before - 25.0), "Recovered stamina allows another attack at the normal cost")
+	_check(prince.attack() and is_equal_approx(prince.stamina, before - 15.0), "Recovered stamina allows another attack at the normal cost")
 	await _frames(400)
 	_check(prince.stamina == 100.0 and game.stamina_bar.value == 100.0, "Regeneration stops exactly at full stamina")
 
 	# A final strike can overdraw a partially recovered bar, once. Queuing it
 	# does not apply the penalty until that swing starts.
-	prince._set_stamina(30.0)
+	prince._set_stamina(20.0)
 	prince.attack()
 	await _frames(20)
 	delay = prince.stamina_regen_left
@@ -94,16 +94,16 @@ func _run() -> void:
 	_key(KEY_J, false)
 	_check(prince.attack_buffer_left > 0.0 and prince.stamina == 5.0 and prince.stamina_regen_left < delay, "Low-stamina follow-up queues without charging or penalizing early")
 	await _frames(10)
-	_check(prince.attack_kind == &"thrust" and prince.stamina == 0.0 and prince.stamina_regen_left > 0.9, "A strike below 25 empties stamina and applies the exhaustion delay when executed")
+	_check(prince.attack_kind == &"thrust" and prince.stamina == 0.0 and prince.stamina_regen_left > 0.5, "A strike below 15 empties stamina and applies a brief exhaustion delay")
 	_check(game.stamina_bar.value == 0.0, "Overdraw immediately empties the stamina bar")
-	await _frames(40)
-	_check(prince.stamina == 0.0, "Overdraw blocks regeneration beyond the normal recovery delay")
-	_check(not prince.attack() and prince.stamina_regen_left == 1.0, "A fresh zero-stamina attempt refreshes the exhaustion penalty")
-	await _frames(40)
-	_check(prince.stamina == 0.0, "Repeated exhausted input postpones the next regeneration")
-	await _frames(30)
-	_check(prince.stamina > 0.0 and prince.stamina < 25.0 and is_equal_approx(game.stamina_bar.value, prince.stamina), "The bar shows partial recovery below the full attack cost")
-	_check(prince.attack() and prince.stamina == 0.0 and prince.stamina_regen_left == 1.0, "Partially recovered stamina can be overdrawn without going negative")
+	await _frames(15)
+	_check(prince.stamina == 0.0, "Overdraw briefly delays regeneration")
+	delay = prince.stamina_regen_left
+	_check(not prince.attack() and prince.stamina_regen_left == delay, "A zero-stamina attempt does not refresh the exhaustion delay")
+	await _frames(20)
+	_check(prince.stamina > 0.0 and prince.stamina < 15.0 and is_equal_approx(game.stamina_bar.value, prince.stamina), "The bar shows partial recovery below the full attack cost")
+	await _frames(5)
+	_check(prince.attack() and prince.stamina == 0.0 and prince.stamina_regen_left == ForestPrince.STAMINA_EXHAUSTION_DELAY, "Partially recovered stamina can be overdrawn without going negative")
 	await _frames(400)
 
 	# Pause freezes both the pool and the delay, then recovery resumes normally.
@@ -123,7 +123,7 @@ func _run() -> void:
 	_reset_armed()
 	prince.attack()
 	prince.take_damage(20, prince.position + Vector2(60, 0))
-	_check(prince.swing_left == 0.0 and prince.stamina == 75.0, "Damage interrupts an attack without refunding its stamina")
+	_check(prince.swing_left == 0.0 and prince.stamina == 85.0, "Damage interrupts an attack without refunding its stamina")
 	await _frames(65)
 	prince.take_damage(1000, prince.position + Vector2(60, 0))
 	before = prince.stamina

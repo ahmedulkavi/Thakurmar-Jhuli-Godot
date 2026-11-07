@@ -1,6 +1,6 @@
 # The Prince's Forest — Thakurmar Jhuli
 
-A native Godot recreation of the game in `old-implementation/Side Scroll`: a short journey through a luminous forest. Claim the glowing sword near the start, jump between branches, and fight forest shades and flying bats on the way to the glowing tree.
+A native Godot recreation of the game in `old-implementation/Side Scroll`: a journey through a luminous forest. Claim the glowing sword near the start, jump between branches, and fight forest shades and flying bats on the way to the glowing tree.
 
 ## Play
 
@@ -13,6 +13,7 @@ Open **`project.godot` in Godot 4.7.2** and press **F6** with `scenes/main.tscn`
 | Climb revealed ladder | W / Up; S / Down | D-pad up / down or left stick |
 | Attack / chain sword strikes after pickup | J / X / left mouse button | X / left face button |
 | Focus healing after amulet pickup | Hold H | B / right face button |
+| Rest at the fountain | E | Right shoulder / RB |
 | Pause / resume | Esc or the on-screen Pause button | Start |
 | Restart, including while paused or finished | R | Y / top face button |
 | Toggle fullscreen | F11 | — |
@@ -27,26 +28,28 @@ Jump onto the raised, anvil-shaped root near the start to automatically collect 
 
 Beyond the rocks, five rooted branch platforms form a staircase up and back down. Jump through a branch from below to land on top, and hold jump to reach the next branch. The ground path remains open in front of the trunks.
 
-Defeat all three bats to make a single ladder appear in a smoky magic poof. Its foot rests on the highest central branch, and it leads to a broad raised deck. Move across the deck and jump to the surrounding upper branches. Hold **W / Up** to climb or **S / Down** to descend. The prince steps off automatically at either end; jump to leave the ladder early. Climbing uses separate upward and downward sprite animations.
+Defeat the three blue-glowing bats to make a single ladder appear in a smoky magic poof. Its foot rests on the highest central branch, and it leads to a broad raised deck. Move across the deck and jump to the surrounding upper branches. Hold **W / Up** to climb or **S / Down** to descend. The prince steps off automatically at either end; jump to leave the ladder early. Climbing uses separate upward and downward sprite animations.
 
 From the rightmost upper branch, make a running jump to the floating island and collect the Healing Amulet. Its animated unlock presentation introduces the blue magic bar beneath stamina. The bar starts empty and each confirmed sword hit grants **20 magic**; missed and blocked attacks grant none. Hold **H** with at least **40 magic** while standing to focus for **0.9 seconds**, spend the magic, and restore **30 health**. The prince cannot move during focus. Releasing early or taking damage cancels healing without spending magic.
 
-The prince takes a small physical step into grounded strikes and keeps normal movement in the air. The sword can damage each shade once per attack, only during the cutting or extended thrust frames, and cannot pass through solid obstacles. Hits add a brief impact hold, sparks, and a blade trail. Taking damage interrupts an attack and cancels a queued follow-up. Two shades guard the final stretch. Their orange glow warns of an approaching lunge; strike to interrupt them or jump clear. Four sword hits defeat a shade. Their windup lasts 0.24 seconds, followed by a faster lunge and 0.60 seconds of recovery.
+The prince takes a small physical step into grounded strikes and keeps normal movement in the air. The sword can damage each shade once per attack, only during the cutting or extended thrust frames, and cannot pass through solid obstacles. Hits add a brief impact hold, sparks, and a blade trail. Taking damage interrupts an attack and cancels a queued follow-up. Six shades guard the forest, including four beyond the old clearing. Their orange glow warns of an approaching lunge; strike to interrupt them or jump clear. Four sword hits defeat a shade. Their windup lasts 0.24 seconds, followed by a faster lunge and 0.60 seconds of recovery.
 
 After pickup, movement uses eight running poses with a natural forward-and-back sword-arm swing: the gripping hand travels behind the hip, passes beside the thigh, and swings forward as the opposite arm counter-swings. The short sword follows the hand and wrist through that arc. The running cycle follows distance travelled; registered hips and soles keep the body aligned when changing direction or entering combat. Jump, landing, and recoil use their own armed poses.
 
 The health bar starts at 100. A shade's lunge deals 25 damage, knocks the prince back, and grants one second of protection with a flashing sprite. At zero health, use **Try Again** or **R** to restart. Restart restores health, stamina, enemies, and the sword pickup. Pause freezes combat along with movement.
 
-The green stamina bar below health starts at **100**. Each slash or thrust costs **25 stamina** when it begins, including attacks that miss or get interrupted. Four rapid attacks exhaust the pool. Stamina recovers at **25 per second** after **0.55 seconds** without starting another attack. A strike with some stamina remaining but less than 25 still executes, empties the bar, and delays the next regeneration for **1 second**. At zero stamina, attacks are blocked; each fresh exhausted press restarts that longer delay. Wait rather than repeatedly pressing attack to recover. Queued follow-ups require some stamina, and holding a rejected attack does not trigger it later. Running and jumping do not consume stamina. Pause and defeat freeze recovery.
+Defeated monsters drop spinning ghostly coins. Touch one to collect its **Essence**, shown in the upper-right counter: regular bats drop **10**, blue guardian bats **15**, and shades **25**. The first coin opens a skippable introduction. Collected Essence and its discovery survive fountain rests and checkpoint retries. Resting or retrying clears uncollected drops as enemies return; starting a new journey resets the total.
+
+The green stamina bar below health starts at **100**. Each slash or thrust costs **15 stamina** when it begins, including attacks that miss or get interrupted. Seven rapid attacks exhaust the pool. Stamina recovers at **35 per second** after **0.5 seconds** without starting another attack. A strike with some stamina remaining but less than 15 still executes, empties the bar, and delays the next regeneration for **0.65 seconds**. At zero stamina, attacks are blocked, but further attack presses do not delay recovery. Queued follow-ups require some stamina, and holding a rejected attack does not trigger it later. Running and jumping do not consume stamina. Pause and defeat freeze recovery.
 
 Shades use painted walking, attack, jump, landing, recoil, and collapse poses. They notice the prince through line of sight, remember him for four seconds after losing sight, and pursue until he escapes their range or stays hidden. While chasing, they crouch and jump over the log, rocks, and raised root. Terrain probes prevent jumps into tall walls or low ceilings, and enemies return to their starting positions after pursuit ends. Attacks have a committed direction and a recovery period; sword hits interrupt them. Defeat removes the hitbox immediately, then plays a short collapse and fade.
 
-Three forest bats hover and patrol at different heights. Their glow turns orange before they dive at the prince; their dive deals 15 damage. Two sword hits defeat a bat, and a sword hit interrupts its attack. Bats return to their roosts after a dive and reset on restart.
+Three guardian bats patrol the original staircase; three more hunt among the branches farther into the forest. Before diving, the blue guardians show an orange warning ring, while the other bats glow orange; their dive deals 15 damage. Two sword hits defeat a bat, and a sword hit interrupts its attack. Bats return to their roosts after a dive and reset on restart. Beyond the former ending, two branch staircases and a final ascent provide raised routes above logs, roots, rocks, and the shades on the ground. Past the banyan tree, press **E** or **RB** at the old fountain to rest. Rest fully restores health and stamina, revives enemies, and activates a checkpoint while preserving collected items and magic. The prince remains seated until another key, button, click, or tap. After a defeat, **Try Again** returns him to the fountain; a normal restart begins the journey again.
 
 ## Project layout
 
 - `scenes/main.tscn` — adaptive window and interface, game viewport with 1280 × 720 logical coordinates and native display rendering, and vignette.
-- `scenes/forest.tscn` — editable 3840-pixel level, parallax layers, physical obstacles, particles, goal area, and camera.
+- `scenes/forest.tscn` — editable 7200-pixel level, parallax layers, physical obstacles, particles, goal area, and camera.
 - `scenes/prince.tscn` — `CharacterBody2D`, 44 × 122 collision shape, shadow, and `AnimatedSprite2D`.
 - `scenes/prince_frames.tres` — the original 14 sprite frames mapped to idle, run, rise, fall, and landing animations.
 - `scripts/player.gd` — movement, jumping, sword combat, health, stamina, magic generation, and focused healing.
@@ -56,7 +59,9 @@ Three forest bats hover and patrol at different heights. Their glow turns orange
 - `scripts/forest_enemy_visual.gd` — registered enemy movement and action poses using `assets/forest-shade-animations.png`.
 - `scripts/forest_bat.gd` and `shaders/bat_wings.gdshader` — flying bat patrols, telegraphed dives, combat, and wing animation.
 - `scripts/forest_ladder.gd` and `scripts/prince_climb_visual.gd` — bat-gated ladder, climbing controls, and eight-frame climb sheet.
+- `scripts/fountain_water.gd` and `scripts/distant_leaves.gd` — flowing fountain highlights, ripples, and drifting background leaves.
 - `scripts/magic_amulet.gd` — animated amulet pickup on the floating upper island.
+- `scripts/essence_drop.gd` — rotating, collectible Essence coins dropped by defeated enemies.
 - `scripts/forest.gd` — journey reset, camera tracking, goal detection, and mist tweens.
 - `scripts/main.gd` — native Godot interface, input, pause, and completion flow.
 - `assets/` — copies of the original artwork, source sheets, and art provenance. All runtime assets are here.
@@ -67,6 +72,9 @@ Three forest bats hover and patrol at different heights. Their glow turns orange
 - `tests/enemy_ai_test.gd` — jumps over every obstacle in both directions, sight and pursuit memory, clearance checks, interrupts, defeat, pause, and reset.
 - `tests/stamina_test.gd` — attack costs, exhaustion, delayed regeneration, combo buffering, free movement, pause, defeat, and reset behavior.
 - `tests/forest_expansion_test.gd` — early sword pickup, the full branch staircase, bat attacks, sword hits, pause, and reset.
+- `tests/extended_forest_test.gd` — the extended route, new staircase jumps, enemy reset, and relocated ending.
+- `tests/fountain_rest_test.gd` — fountain interaction, recovery, enemy reset, sitting, and checkpoint retry.
+- `tests/essence_test.gd` — enemy drops, values, collection, HUD, pause, rest, and retry.
 - `tests/ladder_test.gd` — bat-gated ladder reveal, climbing in both directions, upper platforms, pause, and reset.
 - `tests/magic_amulet_test.gd` — floating-island jump, unlock presentation, magic from confirmed hits, healing, interruption, HUD, and reset.
 - `old-implementation/` — original browser implementation, excluded from Godot scanning with `.gdignore`.
@@ -85,6 +93,9 @@ godot --headless --path . --fixed-fps 60 --script res://tests/resolution_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/enemy_ai_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/stamina_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/forest_expansion_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/extended_forest_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/fountain_rest_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/essence_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/ladder_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/magic_amulet_test.gd
 ```

@@ -37,16 +37,6 @@ func reset_ladder() -> void:
 
 func _ready() -> void:
 	z_index = 0
-	var prompt := Label.new()
-	prompt.text = "W / UP  CLIMB     S / DOWN  DESCEND"
-	prompt.position = Vector2(-125, BOTTOM_Y - TOP_Y - 95)
-	prompt.size = Vector2(250, 22)
-	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	prompt.add_theme_font_size_override("font_size", 11)
-	prompt.add_theme_color_override("font_color", Color("e8d9a6"))
-	prompt.add_theme_constant_override("outline_size", 4)
-	prompt.add_theme_color_override("font_outline_color", Color("122d2d"))
-	add_child(prompt)
 	hide()
 	set_process(false)
 

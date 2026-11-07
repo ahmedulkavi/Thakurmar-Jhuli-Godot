@@ -20,7 +20,7 @@ func _run() -> void:
 	await _frames(5)
 	_check(prince.health == 100 and game.health_bar.value == 100, "Health and HUD start full")
 	_check(not prince.attack(), "Sword attacks require collecting the blade")
-	_check(game.forest.enemies.size() == 2, "Two shades guard the path beyond the sword")
+	_check(game.forest.enemies.size() >= 6, "Shades guard both the original and extended paths")
 	prince.position = Vector2(300, 586)
 	await _frames(40)
 	await _screenshot("combat-pickup")
@@ -74,6 +74,10 @@ func _run() -> void:
 	_key(KEY_J, false)
 	_check(front.health == 0 and front.state == &"dead" and front.collision_layer == 0, "Fourth sword hit starts defeat and immediately removes the shade's hitbox")
 	await _frames(24)
+	if game.mode == &"item_reveal":
+		_key(KEY_ENTER, true)
+		_key(KEY_ENTER, false)
+		await _frames(24)
 	_check(not front.visible, "Defeated shade disappears after its collapse animation")
 	Input.action_press("move_left")
 	await _frames(2)
@@ -155,6 +159,8 @@ func _run() -> void:
 	game.restart_journey()
 	front.set_physics_process(true)
 	behind.set_physics_process(true)
+	for shade in game.forest.enemies.slice(2):
+		shade.set_physics_process(false)
 	prince.position = Vector2(450, 380)
 	await _frames(40)
 	for i in range(240):
@@ -166,7 +172,14 @@ func _run() -> void:
 	await _frames(40)
 	var recovering := false
 	for i in range(1400):
+		if game.mode == &"item_reveal":
+			_key(KEY_ENTER, true)
+			_key(KEY_ENTER, false)
+			await _frames(1)
+			continue
 		if game.mode != &"playing":
+			break
+		if front.health <= 0 and behind.health <= 0 and prince.position.x > 3500.0:
 			break
 		var target: CharacterBody2D = front if front.health > 0 else behind if behind.health > 0 else null
 		if target:
@@ -202,7 +215,7 @@ func _run() -> void:
 	if front.health > 0 or behind.health > 0:
 		print("FIGHT DIAGNOSTICS: mode=%s prince_hp=%s stamina=%s position=%s front_hp=%s behind_hp=%s" % [game.mode, prince.health, prince.stamina, prince.position, front.health, behind.health])
 	_check(front.health == 0 and behind.health == 0, "Normal sword input can defeat both active shades")
-	_check(game.mode == &"complete" and prince.health > 0, "Prince can collect the sword, win both fights, and finish the journey")
+	_check(game.mode == &"playing" and prince.health > 0 and prince.position.x > 3500.0, "Prince can win both fights and continue beyond the old ending")
 	if failures.is_empty():
 		print("PASS: All combat checks passed.")
 	else:

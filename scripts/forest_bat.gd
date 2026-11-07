@@ -1,7 +1,11 @@
 extends CharacterBody2D
 ## A hovering enemy that warns, commits to a dive, then returns to its roost.
 
+signal defeated(drop_position: Vector2, essence_value: int)
+
 const MAX_HEALTH := 2
+const ESSENCE_VALUE := 10
+const GUARDIAN_ESSENCE_VALUE := 15
 const DAMAGE := 15
 const SIGHT_RANGE := 270.0
 const DIVE_SPEED := 340.0
@@ -9,6 +13,7 @@ const BAT_TEXTURE = preload("res://assets/forest-bat.png")
 const BAT_WINGS = preload("res://shaders/bat_wings.gdshader")
 
 var player: ForestPrince
+var is_ladder_guardian := false
 var home := Vector2.ZERO
 var health := MAX_HEALTH
 var state: StringName = &"patrol"
@@ -21,6 +26,7 @@ var hurt_left := 0.0
 var death_left := 0.0
 var art: Sprite2D
 var glow: Sprite2D
+var inner_glow: Sprite2D
 var wing_material: ShaderMaterial
 
 func _ready() -> void:
@@ -38,9 +44,20 @@ func _ready() -> void:
 	glow = Sprite2D.new()
 	glow.texture = preload("res://scenes/soft_glow.tres")
 	glow.position.y = -25
-	glow.scale = Vector2(0.7, 0.5)
+	glow.scale = Vector2(3.5, 2.6) if is_ladder_guardian else Vector2(0.7, 0.5)
 	glow.modulate = Color(0.38, 0.85, 0.78, 0.22)
+	if is_ladder_guardian:
+		var luminous := CanvasItemMaterial.new()
+		luminous.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		glow.material = luminous
 	add_child(glow)
+	if is_ladder_guardian:
+		inner_glow = Sprite2D.new()
+		inner_glow.texture = glow.texture
+		inner_glow.position = glow.position
+		inner_glow.scale = Vector2(2.1, 1.5)
+		inner_glow.material = glow.material
+		add_child(inner_glow)
 	art = Sprite2D.new()
 	art.texture = BAT_TEXTURE
 	art.position.y = -25
@@ -57,7 +74,9 @@ func _physics_process(delta: float) -> void:
 	if health <= 0:
 		death_left = maxf(0.0, death_left - delta)
 		art.modulate.a = death_left / 0.4
-		glow.modulate.a = 0.22 * death_left / 0.4
+		glow.modulate.a = (0.65 if is_ladder_guardian else 0.22) * death_left / 0.4
+		if inner_glow:
+			inner_glow.modulate.a = 0.5 * death_left / 0.4
 		if death_left <= 0.0:
 			hide()
 		return
@@ -113,7 +132,11 @@ func _update_art() -> void:
 	art.flip_h = facing > 0.0
 	art.rotation = clampf(velocity.y / 1800.0, -0.16, 0.16)
 	art.modulate = Color(1.8, 1.6, 1.4) if hurt_left > 0.0 else Color.WHITE
-	glow.modulate = Color(1.0, 0.46, 0.24, 0.38) if state == &"windup" else Color(0.38, 0.85, 0.78, 0.22)
+	if is_ladder_guardian:
+		glow.modulate = Color(0.10, 0.38, 1.0, 0.65 + 0.10 * sin(clock * 2.4))
+		inner_glow.modulate = Color(0.25, 0.65, 1.0, 0.50 + 0.08 * sin(clock * 2.4))
+	else:
+		glow.modulate = Color(1.0, 0.46, 0.24, 0.38) if state == &"windup" else Color(0.38, 0.85, 0.78, 0.22)
 
 func take_damage(amount: int, source: Vector2) -> void:
 	if health <= 0 or amount <= 0 or get_tree().paused:
@@ -128,6 +151,7 @@ func take_damage(amount: int, source: Vector2) -> void:
 		death_left = 0.4
 		velocity = Vector2.ZERO
 		set_deferred("collision_layer", 0)
+		defeated.emit(global_position + Vector2(0, -25), GUARDIAN_ESSENCE_VALUE if is_ladder_guardian else ESSENCE_VALUE)
 	queue_redraw()
 
 func reset_enemy() -> void:
@@ -148,6 +172,17 @@ func reset_enemy() -> void:
 	queue_redraw()
 
 func _draw() -> void:
+	if is_ladder_guardian and health > 0:
+		# Slow blue motes make the magical aura recognizable at a distance.
+		for i in range(5):
+			var angle := clock * 0.7 + float(i) * TAU / 5.0
+			var mote := Vector2(cos(angle) * 66.0, -25.0 + sin(angle) * 42.0)
+			var light := Color(0.38, 0.78, 1.0, 0.8)
+			draw_circle(mote, 1.7, light, true, -1.0, true)
+			draw_line(mote - Vector2(0, 3.5), mote + Vector2(0, 3.5), light, 0.8, true)
+	# Keep the attack warning visible without replacing a guardian's blue glow.
+	if is_ladder_guardian and health > 0 and state == &"windup":
+		draw_arc(Vector2(0, -25), 37.0, 0.0, TAU, 32, Color(1.0, 0.48, 0.20, 0.85), 2.5, true)
 	if health > 0 and health < MAX_HEALTH:
 		draw_rect(Rect2(-24, -60, 48, 4), Color("192e27"))
 		draw_rect(Rect2(-24, -60, 48.0 * health / MAX_HEALTH, 4), Color("c94b4b"))

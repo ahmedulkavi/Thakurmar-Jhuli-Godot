@@ -23,7 +23,16 @@ func _run() -> void:
 	_check(game.forest.upper_platforms.all(func(platform: StaticBody2D) -> bool: return platform.visible and platform.collision_layer == 8), "The raised route is present before the bats are defeated")
 	_check(ladder.position == Vector2(2280, ForestLadder.TOP_Y) and ForestLadder.BOTTOM_Y == 330.0, "The ladder begins on the highest central platform")
 	_check(game.forest.upper_platforms[1].position == Vector2(2280, ForestLadder.TOP_Y), "The ladder leads to a broad raised deck")
-	_check(game.forest.bats.all(func(bat: CharacterBody2D) -> bool: return absf(bat.home.x - ladder.position.x) <= 310.0), "All three bats guard the central staircase where the reveal can be seen")
+	_check(game.forest.ladder_guardians.all(func(bat: CharacterBody2D) -> bool: return absf(bat.home.x - ladder.position.x) <= 310.0), "All three guardian bats patrol the central staircase")
+	_check(ladder.get_children().all(func(child: Node) -> bool: return not child is Label), "The ladder displays no climb instruction text")
+	_check(game.forest.ladder_guardians.all(func(bat: CharacterBody2D) -> bool: return bat.is_ladder_guardian and bat.glow.modulate.b > bat.glow.modulate.g and bat.glow.modulate.b > bat.glow.modulate.r), "All bats required for the healing route glow blue")
+	_check(game.forest.ladder_guardians.all(func(bat: CharacterBody2D) -> bool: return bat.inner_glow != null and bat.glow.material.blend_mode == CanvasItemMaterial.BLEND_MODE_ADD and bat.art.modulate == Color.WHITE), "Guardian bats retain their original colors inside a luminous blue aura")
+	_check(game.forest.bats.slice(3).all(func(bat: CharacterBody2D) -> bool: return not bat.is_ladder_guardian and bat.glow.modulate.g > bat.glow.modulate.b), "Other bats keep their usual glow")
+	var guardian: CharacterBody2D = game.forest.ladder_guardians[0]
+	guardian.state = &"windup"
+	guardian._update_art()
+	_check(guardian.glow.modulate.b > guardian.glow.modulate.g, "Guardian glow stays blue while the attack warning is shown")
+	guardian.reset_enemy()
 	prince.position = Vector2(2280, 586)
 	Input.action_press("move_up")
 	await _frames(10)
@@ -36,12 +45,17 @@ func _run() -> void:
 	game.forest.bats[2].take_damage(2, prince.position)
 	await _frames(2)
 	_check(ladder.active and ladder.visible and ladder.reveal_elapsed > 0.0 and ladder.reveal_elapsed < ForestLadder.SMOKE_DURATION, "Defeating all three bats reveals one ladder with a smoky poof")
+	_check(game.forest.bats.slice(3).all(func(bat: CharacterBody2D) -> bool: return bat.health > 0), "Later bats do not gate the original ladder")
 	_check(game.forest.upper_platforms.all(func(platform: StaticBody2D) -> bool: return platform.visible and platform.collision_layer == 8), "Raised platforms remain in place when the ladder appears")
 	await _capture("ladder-unlocked")
 	await _frames(16)
 	await _capture("ladder-smoke")
 	await _frames(34)
 	_check(ladder.ready_for_climb(), "The ladder becomes climbable after its reveal")
+	# Currency pickup and its presentation are covered by essence_test.gd.
+	for drop in game.forest.essence_drops.get_children():
+		drop.queue_free()
+	await _frames(1)
 	prince.position = Vector2(2280, ForestLadder.BOTTOM_Y)
 	prince.velocity = Vector2.ZERO
 	await _frames(2)
@@ -131,6 +145,7 @@ func _run() -> void:
 	game.restart_journey()
 	await _frames(2)
 	_check(not ladder.active and not ladder.visible and not prince.is_climbing and prince.collision_mask == 9, "Restart hides the ladder and clears climbing state")
+	_check(game.forest.ladder_guardians.all(func(bat: CharacterBody2D) -> bool: return bat.health > 0 and bat.glow.modulate.b > bat.glow.modulate.g), "Restart restores the blue guardian glow")
 	_check(game.forest.upper_platforms.all(func(platform: StaticBody2D) -> bool: return platform.visible and platform.collision_layer == 8), "Restart preserves the raised route")
 	if failures.is_empty():
 		print("PASS: All ladder checks passed.")

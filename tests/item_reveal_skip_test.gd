@@ -30,8 +30,18 @@ func _run() -> void:
 	key.pressed = false
 	Input.parse_input_event(key)
 
+	game._show_item_reveal(&"essence")
+	var enter := InputEventKey.new()
+	enter.keycode = KEY_ENTER
+	enter.physical_keycode = KEY_ENTER
+	enter.pressed = true
+	Input.parse_input_event(enter)
+	await _frames(1)
+	enter.pressed = false
+	Input.parse_input_event(enter)
+	await _frames(2)
 	prince.equip_amulet()
-	_check(game.mode == &"item_reveal" and prince.has_amulet, "Amulet pickup opens its reveal")
+	_check(game.mode == &"item_reveal" and prince.has_amulet and game.reveal_art.texture == game.AMULET_TEXTURE, "Amulet pickup restores its own artwork after an Essence reveal")
 	var button := InputEventJoypadButton.new()
 	button.button_index = JOY_BUTTON_START
 	button.pressed = true
