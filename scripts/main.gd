@@ -6,6 +6,7 @@ const INK := Color("192921")
 const PAPER := Color("f0eddb")
 const MUTED := Color("93b3a2")
 const INTERFACE_SIZE := Vector2(1360, 940)
+const SWORD_REVEAL_VISUAL = preload("res://scripts/sword_visual.gd")
 
 @onready var interface: Control = $Interface
 @onready var forest: ForestLevel = $Interface/GameFrame/ViewportContainer/World/Forest
@@ -23,9 +24,19 @@ var serif: SystemFont
 var italic: SystemFont
 var sans: SystemFont
 var pause_button: Button
+var combat_panel: Panel
 var health_bar: ProgressBar
-var health_label: Label
-var weapon_label: Label
+var stamina_bar: ProgressBar
+var magic_bar: ProgressBar
+var amulet_reveal: Control
+var reveal_shade: ColorRect
+var reveal_halo: Panel
+var reveal_art: TextureRect
+var reveal_sword: Node2D
+var reveal_title: Label
+var reveal_copy: Label
+var reveal_sparks: Array[Label] = []
+var reveal_tween: Tween
 var windowed_mode: Window.Mode = Window.MODE_MAXIMIZED
 
 func _ready() -> void:
@@ -42,11 +53,17 @@ func _ready() -> void:
 	theme = ui_theme
 	_build_chrome()
 	_build_overlay()
+	_build_amulet_reveal()
 	forest.journey_complete.connect(complete_journey)
 	forest.player.health_changed.connect(_update_health)
+	forest.player.stamina_changed.connect(_update_stamina)
+	forest.player.magic_changed.connect(_update_magic)
 	forest.player.sword_equipped.connect(_on_sword_equipped)
+	forest.player.amulet_equipped.connect(_on_amulet_equipped)
 	forest.player.died.connect(_on_player_died)
 	_update_health(forest.player.health, ForestPrince.MAX_HEALTH)
+	_update_stamina(forest.player.stamina, ForestPrince.MAX_STAMINA)
+	_update_magic(forest.player.magic, ForestPrince.MAX_MAGIC)
 	world_image.texture = world.get_texture()
 	get_viewport().size_changed.connect(_queue_display_resize)
 	resized.connect(_queue_display_resize)
@@ -74,6 +91,14 @@ func toggle_fullscreen() -> void:
 		window.mode = Window.MODE_FULLSCREEN
 
 func _input(event: InputEvent) -> void:
+	if mode == &"item_reveal":
+		if (event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton or event is InputEventScreenTouch) and event.is_pressed() and not event.is_echo():
+			get_viewport().set_input_as_handled()
+			if reveal_tween and reveal_tween.is_valid():
+				reveal_tween.kill()
+			_release_actions()
+			_finish_item_reveal()
+		return
 	if event.is_action_pressed("restart"):
 		restart_journey()
 		get_viewport().set_input_as_handled()
@@ -119,12 +144,24 @@ func _on_player_died() -> void:
 func _update_health(current: int, maximum: int) -> void:
 	health_bar.max_value = maximum
 	health_bar.value = current
-	health_label.text = "HEALTH  %d / %d" % [current, maximum]
 	health_bar.add_theme_stylebox_override("fill", _box(Color("f16b62") if current <= 30 else Color("c94b4b"), Color.TRANSPARENT, 3))
 
+func _update_stamina(current: float, maximum: float) -> void:
+	stamina_bar.max_value = maximum
+	stamina_bar.value = current
+
+func _update_magic(current: float, maximum: float) -> void:
+	magic_bar.max_value = maximum
+	magic_bar.value = current
+	magic_bar.visible = forest.player.has_amulet
+	combat_panel.size.y = 58.0 if forest.player.has_amulet else 41.0
+
+func _on_amulet_equipped() -> void:
+	_update_magic(forest.player.magic, ForestPrince.MAX_MAGIC)
+	_show_item_reveal(&"amulet")
+
 func _on_sword_equipped() -> void:
-	weapon_label.text = "FOREST BLADE  ·  J / X / CLICK TO STRIKE"
-	weapon_label.add_theme_color_override("font_color", GOLD)
+	_show_item_reveal(&"sword")
 
 func _show_overlay() -> void:
 	get_tree().paused = true
@@ -143,18 +180,20 @@ func resume_journey() -> void:
 	get_tree().paused = false
 
 func restart_journey() -> void:
+	if reveal_tween and reveal_tween.is_valid():
+		reveal_tween.kill()
+	amulet_reveal.hide()
+	amulet_reveal.modulate = Color.WHITE
 	mode = &"playing"
 	overlay.hide()
 	primary.release_focus()
 	pause_button.disabled = false
 	_release_actions()
 	forest.reset_journey()
-	weapon_label.text = "Find the glowing blade on the raised root"
-	weapon_label.add_theme_color_override("font_color", MUTED)
 	get_tree().paused = false
 
 func _release_actions() -> void:
-	for action in [&"move_left", &"move_right", &"jump", &"attack"]:
+	for action in [&"move_left", &"move_right", &"move_up", &"move_down", &"jump", &"attack", &"heal"]:
 		Input.action_release(action)
 
 func _build_chrome() -> void:
@@ -186,9 +225,9 @@ func _build_chrome() -> void:
 	frame.add_child(pause_button)
 	_build_combat_hud()
 	var x: float = 40
-	for group in [["←", "→", "or", "A", "D", "MOVE"], ["SPACE", "JUMP"], ["J / X", "ATTACK"], ["ESC", "PAUSE"], ["R", "RESTART"]]:
+	for group in [["←", "→", "or", "A", "D", "MOVE"], ["SPACE", "JUMP"], ["J / X", "ATTACK"], ["H", "HEAL"], ["ESC", "PAUSE"], ["R", "RESTART"]]:
 		for token: String in group:
-			if token in ["MOVE", "JUMP", "ATTACK", "PAUSE", "RESTART"]:
+			if token in ["MOVE", "JUMP", "ATTACK", "HEAL", "PAUSE", "RESTART"]:
 				var name_label := _label(interface, token, Vector2(x + 3, 877), 10, MUTED)
 				x += name_label.get_minimum_size().x + 33
 			elif token == "or":
@@ -211,21 +250,137 @@ func _build_chrome() -> void:
 	_label(interface, "✦", Vector2(1302, 872), 20, GOLD)
 
 func _build_combat_hud() -> void:
-	var panel := Panel.new()
-	panel.position = Vector2(28, 87)
-	panel.size = Vector2(355, 84)
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_theme_stylebox_override("panel", _box(Color(0.035, 0.09, 0.08, 0.86), Color("52695a"), 5))
-	frame.add_child(panel)
-	health_label = _label(panel, "", Vector2(14, 8), 11, PAPER)
-	health_bar = ProgressBar.new()
-	health_bar.position = Vector2(14, 30)
-	health_bar.size = Vector2(327, 12)
-	health_bar.show_percentage = false
-	health_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	health_bar.add_theme_stylebox_override("background", _box(Color("192e27"), Color("52695a"), 3))
-	panel.add_child(health_bar)
-	weapon_label = _label(panel, "Find the glowing blade on the raised root", Vector2(14, 54), 11, MUTED)
+	combat_panel = Panel.new()
+	combat_panel.position = Vector2(28, 87)
+	combat_panel.size = Vector2(206, 41)
+	combat_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	combat_panel.add_theme_stylebox_override("panel", _box(Color(0.035, 0.09, 0.08, 0.86), Color("52695a"), 5))
+	frame.add_child(combat_panel)
+	health_bar = _resource_bar(combat_panel, Vector2(8, 7), Color("c94b4b"))
+	stamina_bar = _resource_bar(combat_panel, Vector2(8, 24), Color("79c977"))
+	magic_bar = _resource_bar(combat_panel, Vector2(8, 41), Color("4fa7e8"))
+	magic_bar.hide()
+
+func _resource_bar(parent: Control, at: Vector2, fill: Color) -> ProgressBar:
+	var bar := ProgressBar.new()
+	bar.position = at
+	bar.step = 0.0
+	bar.show_percentage = false
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# With no percentage text, avoid a font minimum overriding the bar height.
+	bar.add_theme_font_size_override("font_size", 1)
+	bar.add_theme_stylebox_override("background", _box(Color("192e27"), Color("52695a"), 3))
+	bar.add_theme_stylebox_override("fill", _box(fill, Color.TRANSPARENT, 3))
+	parent.add_child(bar)
+	bar.size = Vector2(190, 10)
+	return bar
+
+func _build_amulet_reveal() -> void:
+	amulet_reveal = Control.new()
+	amulet_reveal.name = "AmuletReveal"
+	amulet_reveal.size = Vector2(1280, 720)
+	amulet_reveal.mouse_filter = Control.MOUSE_FILTER_STOP
+	amulet_reveal.z_index = 30
+	frame.add_child(amulet_reveal)
+	reveal_shade = ColorRect.new()
+	reveal_shade.size = amulet_reveal.size
+	reveal_shade.color = Color(0.015, 0.055, 0.075, 0.0)
+	amulet_reveal.add_child(reveal_shade)
+	reveal_halo = Panel.new()
+	reveal_halo.position = Vector2(490, 72)
+	reveal_halo.size = Vector2(300, 300)
+	reveal_halo.pivot_offset = reveal_halo.size * 0.5
+	var halo_style := _box(Color(0.08, 0.38, 0.48, 0.12), Color(0.49, 0.9, 1.0, 0.7), 150)
+	halo_style.set_border_width_all(3)
+	halo_style.shadow_color = Color(0.2, 0.8, 1.0, 0.4)
+	halo_style.shadow_size = 30
+	reveal_halo.add_theme_stylebox_override("panel", halo_style)
+	amulet_reveal.add_child(reveal_halo)
+	reveal_art = TextureRect.new()
+	reveal_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	reveal_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	reveal_art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	reveal_art.texture = preload("res://assets/healing-amulet.png")
+	amulet_reveal.add_child(reveal_art)
+	reveal_art.position = Vector2(515, 88)
+	reveal_art.size = Vector2(250, 250)
+	reveal_art.pivot_offset = reveal_art.size * 0.5
+	reveal_sword = Node2D.new()
+	reveal_sword.set_script(SWORD_REVEAL_VISUAL)
+	reveal_sword.aura = true
+	reveal_sword.position = Vector2(640, 300)
+	amulet_reveal.add_child(reveal_sword)
+	reveal_sword.hide()
+	reveal_title = _label(amulet_reveal, "HEALING AMULET AWAKENED", Vector2(240, 390), 29, Color("d8f5ff"), serif)
+	reveal_title.size = Vector2(800, 48)
+	reveal_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	reveal_title.add_theme_constant_override("outline_size", 7)
+	reveal_title.add_theme_color_override("font_outline_color", Color("092c3b"))
+	reveal_copy = _label(amulet_reveal, "Allows the user the magic of healing.", Vector2(240, 446), 18, Color("a8dfed"), italic)
+	reveal_copy.size = Vector2(800, 36)
+	reveal_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var skip_hint := _label(amulet_reveal, "PRESS ANY KEY OR BUTTON, CLICK OR TAP TO SKIP", Vector2(240, 510), 13, Color("a8dfed"), sans)
+	skip_hint.size = Vector2(800, 28)
+	skip_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	for i in range(14):
+		var spark := _label(amulet_reveal, "✦", Vector2(632, 220), 18 + i % 3 * 4, Color("b9f4ff"))
+		spark.pivot_offset = Vector2(10, 10)
+		reveal_sparks.append(spark)
+	amulet_reveal.hide()
+
+func _show_item_reveal(item: StringName) -> void:
+	mode = &"item_reveal"
+	get_tree().paused = true
+	pause_button.disabled = true
+	_release_actions()
+	amulet_reveal.modulate = Color.WHITE
+	reveal_shade.color.a = 0.0
+	var sword_reveal := item == &"sword"
+	reveal_art.visible = not sword_reveal
+	reveal_sword.visible = sword_reveal
+	reveal_title.text = "FOREST BLADE AWAKENED" if sword_reveal else "HEALING AMULET AWAKENED"
+	reveal_copy.text = "Allows the user to wield the Forest Blade." if sword_reveal else "Allows the user the magic of healing."
+	var item_art: CanvasItem = reveal_sword if sword_reveal else reveal_art
+	var final_scale := Vector2.ONE * (4.0 if sword_reveal else 1.0)
+	item_art.modulate.a = 0.0
+	item_art.scale = final_scale * 0.12
+	item_art.rotation = -0.16
+	reveal_halo.modulate.a = 0.0
+	reveal_halo.scale = Vector2.ONE * 0.25
+	reveal_title.modulate.a = 0.0
+	reveal_copy.modulate.a = 0.0
+	for i in range(reveal_sparks.size()):
+		var spark := reveal_sparks[i]
+		spark.position = Vector2(632, 220)
+		spark.modulate.a = 0.0
+	amulet_reveal.show()
+	reveal_tween = create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	reveal_tween.tween_property(reveal_shade, "color:a", 0.88, 0.25)
+	reveal_tween.parallel().tween_property(item_art, "modulate:a", 1.0, 0.25)
+	reveal_tween.parallel().tween_property(item_art, "scale", final_scale, 0.72).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	reveal_tween.parallel().tween_property(item_art, "rotation", 0.0, 0.72).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	reveal_tween.parallel().tween_property(reveal_halo, "modulate:a", 1.0, 0.35)
+	reveal_tween.parallel().tween_property(reveal_halo, "scale", Vector2.ONE, 0.82).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	for i in range(reveal_sparks.size()):
+		var angle := float(i) * TAU / float(reveal_sparks.size())
+		var distance := 155.0 + float(i % 3) * 28.0
+		var destination := Vector2(632, 220) + Vector2(cos(angle), sin(angle)) * distance
+		reveal_tween.parallel().tween_property(reveal_sparks[i], "position", destination, 0.9).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		reveal_tween.parallel().tween_property(reveal_sparks[i], "modulate:a", 0.9, 0.32)
+	reveal_tween.tween_interval(0.12)
+	reveal_tween.tween_property(reveal_title, "modulate:a", 1.0, 0.35)
+	reveal_tween.parallel().tween_property(reveal_copy, "modulate:a", 1.0, 0.45)
+	reveal_tween.tween_interval(1.65)
+	reveal_tween.tween_property(amulet_reveal, "modulate:a", 0.0, 0.35)
+	reveal_tween.tween_callback(_finish_item_reveal)
+
+func _finish_item_reveal() -> void:
+	amulet_reveal.hide()
+	amulet_reveal.modulate = Color.WHITE
+	if mode == &"item_reveal":
+		mode = &"playing"
+		pause_button.disabled = false
+		get_tree().paused = false
 
 func _build_overlay() -> void:
 	overlay = Control.new()

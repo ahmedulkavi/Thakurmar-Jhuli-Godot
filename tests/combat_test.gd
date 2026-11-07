@@ -15,19 +15,26 @@ func _run() -> void:
 	root.add_child(game)
 	current_scene = game
 	prince = game.forest.player
+	for bat in game.forest.bats:
+		bat.set_physics_process(false)
 	await _frames(5)
 	_check(prince.health == 100 and game.health_bar.value == 100, "Health and HUD start full")
 	_check(not prince.attack(), "Sword attacks require collecting the blade")
 	_check(game.forest.enemies.size() == 2, "Two shades guard the path beyond the sword")
-	prince.position = Vector2(2500, 586)
+	prince.position = Vector2(300, 586)
 	await _frames(40)
 	await _screenshot("combat-pickup")
 	_check(not prince.has_sword and game.forest.sword_pickup.visible, "Blade waits above the anvil platform")
-	prince.position = Vector2(2650, 380)
+	prince.position = Vector2(450, 380)
 	await _frames(40)
 	_check(prince.has_sword and prince.combat_visual.visible, "Landing at the anvil automatically equips the sword")
 	_check(game.forest.sword_pickup.collected and not game.forest.sword_pickup.visible, "Collected sword disappears from the platform")
-	_check("FOREST BLADE" in game.weapon_label.text, "HUD reports the equipped sword and attack controls")
+	_check(game.mode == &"item_reveal" and paused and game.amulet_reveal.visible and game.reveal_sword.visible and not game.reveal_art.visible, "Sword pickup opens its animated item reveal")
+	_check(game.reveal_title.text == "FOREST BLADE AWAKENED" and game.reveal_copy.text == "Allows the user to wield the Forest Blade.", "Sword reveal describes the unlocked weapon")
+	await _frames(50)
+	await _screenshot("sword-unlock")
+	await _frames(160)
+	_check(game.mode == &"playing" and not paused and not game.amulet_reveal.visible, "Sword reveal returns control automatically")
 
 	# Disable AI while isolating hit direction, reach, cooldown, and wall blocking.
 	var front: CharacterBody2D = game.forest.enemies[0]
@@ -41,17 +48,17 @@ func _run() -> void:
 	_key(KEY_J, true)
 	await _frames(10)
 	_key(KEY_J, false)
-	_check(front.health == 2, "J swings and damages a shade in front")
-	_check(behind.health == 3, "Right-facing attack does not hit a shade behind")
+	_check(front.health == 3, "J swings and damages a shade in front")
+	_check(behind.health == 4, "Right-facing attack does not hit a shade behind")
 	_check(not prince.attack(), "Cooldown prevents an immediate repeated strike")
 	await _screenshot("combat-swing")
 	await _frames(10)
-	_check(front.health == 2, "One swing hits each enemy only once")
+	_check(front.health == 3, "One swing hits each enemy only once")
 	await _frames(12)
 	_key(KEY_X, true)
 	await _frames(12)
 	_key(KEY_X, false)
-	_check(front.health == 1, "X starts another swing after cooldown")
+	_check(front.health == 2, "X starts another swing after cooldown")
 	await _frames(18)
 	var mouse := InputEventMouseButton.new()
 	mouse.button_index = MOUSE_BUTTON_LEFT
@@ -60,13 +67,19 @@ func _run() -> void:
 	await _frames(12)
 	mouse.pressed = false
 	Input.parse_input_event(mouse)
-	_check(front.health == 0 and front.state == &"dead" and front.collision_layer == 0, "Mouse attack starts defeat and immediately removes the shade's hitbox")
+	_check(front.health == 1, "Stronger shade survives three hits, including mouse attack")
+	await _frames(20)
+	_key(KEY_J, true)
+	await _frames(12)
+	_key(KEY_J, false)
+	_check(front.health == 0 and front.state == &"dead" and front.collision_layer == 0, "Fourth sword hit starts defeat and immediately removes the shade's hitbox")
 	await _frames(24)
 	_check(not front.visible, "Defeated shade disappears after its collapse animation")
 	Input.action_press("move_left")
 	await _frames(2)
 	Input.action_release("move_left")
 	await _frames(4)
+	await _wait_for_stamina()
 	var controller := InputEventJoypadButton.new()
 	controller.button_index = JOY_BUTTON_X
 	controller.pressed = true
@@ -74,20 +87,22 @@ func _run() -> void:
 	await _frames(12)
 	controller.pressed = false
 	Input.parse_input_event(controller)
-	_check(behind.health == 2, "Controller left face button strikes to the left when facing left")
+	_check(behind.health == 3, "Controller left face button strikes to the left when facing left")
 	await _frames(20)
 	behind.position = Vector2(prince.position.x - 190, 586)
-	prince.attack()
+	await _wait_for_stamina()
+	_check(prince.attack(), "Out-of-reach check starts an affordable sword attack")
 	await _frames(16)
-	_check(behind.health == 2, "Sword cannot damage a shade outside its reach")
+	_check(behind.health == 3, "Sword cannot damage a shade outside its reach")
 	await _frames(15)
 	prince.position = Vector2(2550, 586)
 	prince.facing = 1.0
 	behind.position = Vector2(2650, 586)
 	await _frames(3)
-	prince.attack()
+	await _wait_for_stamina()
+	_check(prince.attack(), "Wall-blocking check starts an affordable sword attack")
 	await _frames(15)
-	_check(behind.health == 2, "Solid platform blocks sword hits through its body")
+	_check(behind.health == 3, "Solid platform blocks sword hits through its body")
 
 	# Damage affects the HUD, grants a grace period, and freezes with pause.
 	prince.position = Vector2(2900, 586)
@@ -112,9 +127,9 @@ func _run() -> void:
 	front.set_physics_process(true)
 	prince.position = Vector2(2935, 586)
 	await _frames(5)
-	_check(front.attack_left > 0.18 and prince.health == 100, "Nearby shade visibly winds up before dealing damage")
+	_check(front.attack_left > front.ATTACK_ACTIVE_TIME and prince.health == 100, "Nearby shade visibly winds up before dealing damage")
 	await _frames(40)
-	_check(prince.health == 80, "Shade's lunge damages the prince through normal AI")
+	_check(prince.health == 75, "Shade's faster lunge deals 25 damage through normal AI")
 	await _screenshot("combat-damage")
 	front.set_physics_process(false)
 	await _frames(65)
@@ -127,9 +142,8 @@ func _run() -> void:
 	await _frames(5)
 	_check(not paused and game.mode == &"playing" and prince.health == 100, "Try Again restores full health and resumes")
 	_check(not prince.has_sword and game.forest.sword_pickup.visible and not game.forest.sword_pickup.collected, "Restart restores the sword pickup and clears the equipped weapon")
-	_check(front.health == 3 and behind.health == 3 and front.visible and behind.visible, "Restart revives both shades")
+	_check(front.health == 4 and behind.health == 4 and front.visible and behind.visible, "Restart revives both shades at their stronger full health")
 	_check(front.position.distance_to(front.home) < 1.0 and behind.position.distance_to(behind.home) < 1.0, "Restart returns shades to their original positions")
-	_check("Find the glowing blade" in game.weapon_label.text, "Restart restores the pickup hint")
 	prince.equip_sword()
 	game.pause_journey()
 	_key(KEY_R, true)
@@ -141,19 +155,39 @@ func _run() -> void:
 	game.restart_journey()
 	front.set_physics_process(true)
 	behind.set_physics_process(true)
-	prince.position = Vector2(2650, 380)
+	prince.position = Vector2(450, 380)
 	await _frames(40)
-	for i in range(700):
+	for i in range(240):
+		if game.mode == &"playing":
+			break
+		await _frames(1)
+	prince.position = Vector2(2650, 380)
+	prince.velocity = Vector2.ZERO
+	await _frames(40)
+	var recovering := false
+	for i in range(1400):
 		if game.mode != &"playing":
 			break
 		var target: CharacterBody2D = front if front.health > 0 else behind if behind.health > 0 else null
 		if target:
 			var distance: float = target.position.x - prince.position.x
+			if prince.stamina < ForestPrince.ATTACK_STAMINA_COST:
+				recovering = true
+			elif prince.stamina >= 100.0:
+				recovering = false
 			Input.action_release("move_left")
 			Input.action_release("move_right")
-			if absf(distance) > 65.0 or signf(distance) != prince.facing:
+			if prince.velocity.y >= 0.0:
+				Input.action_release("jump")
+			if recovering:
+				# Retreat during recovery; jump across the raised root if needed.
+				if absf(distance) < 280.0:
+					Input.action_press("move_left" if distance > 0.0 else "move_right")
+				if prince.is_on_floor() and absf(distance) < 200.0:
+					Input.action_press("jump")
+			elif absf(distance) > 65.0 or signf(distance) != prince.facing:
 				Input.action_press("move_right" if distance > 0.0 else "move_left")
-			if absf(distance) < 110.0 and i % 30 == 0:
+			if not recovering and absf(distance) < 100.0 and prince.cooldown_left <= 0.0 and prince.stamina >= ForestPrince.ATTACK_STAMINA_COST:
 				Input.action_press("attack")
 			else:
 				Input.action_release("attack")
@@ -164,6 +198,9 @@ func _run() -> void:
 	Input.action_release("move_left")
 	Input.action_release("move_right")
 	Input.action_release("attack")
+	Input.action_release("jump")
+	if front.health > 0 or behind.health > 0:
+		print("FIGHT DIAGNOSTICS: mode=%s prince_hp=%s stamina=%s position=%s front_hp=%s behind_hp=%s" % [game.mode, prince.health, prince.stamina, prince.position, front.health, behind.health])
 	_check(front.health == 0 and behind.health == 0, "Normal sword input can defeat both active shades")
 	_check(game.mode == &"complete" and prince.health > 0, "Prince can collect the sword, win both fights, and finish the journey")
 	if failures.is_empty():
@@ -179,6 +216,12 @@ func _frames(count: int) -> void:
 	for i in range(count):
 		await physics_frame
 	await process_frame
+
+func _wait_for_stamina() -> void:
+	for i in range(240):
+		if prince.stamina >= ForestPrince.ATTACK_STAMINA_COST and prince.cooldown_left <= 0.0:
+			return
+		await _frames(1)
 
 func _key(keycode: Key, pressed: bool) -> void:
 	var event := InputEventKey.new()

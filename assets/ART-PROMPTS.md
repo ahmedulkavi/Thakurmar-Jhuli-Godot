@@ -1,5 +1,23 @@
 # Generated art prompts
 
+## Prince climb up and down — `prince-climb-sheet.png`
+
+Generated from `prince-armed-locomotion.png` as a style and identity reference, then edited to remove the ladder pictured in the first generation. The final transparent 4 × 2 sheet has four upward poses in the first row and four downward poses in the second. The sword is secured on the prince's back at a consistent size while he climbs.
+
+Final edit prompt: Remove ONLY the wooden ladder rails and rungs from all eight cells, including pieces above, below, and between the prince's limbs. Restore actual transparent background wherever the ladders were. Keep every pose of the prince exactly intact: same face, hair, circlet, hands, fingers, feet, clothing, orange sash, sheathed sword, pose, size, position, and 4-column by 2-row arrangement. The hands should remain held in climbing positions ready to grasp a separate ladder rendered by the game. No new scenery or effects.
+
+## Rooted platform support — `platform-root-support.png`
+
+Generated with the built-in image generation tool on a transparent background. The support is fitted behind each branch and the foreground grass covers its roots.
+
+Prompt: Use case: stylized-concept. Asset: transparent 2D side-scroller platform support sprite. Create a SINGLE complete upright trunk of an ancient banyan, strong thick natural trunk made of twisting intertwined dark brown and deep teal bark, subtle moss and cyan highlights, ending at the top in a broad horizontal stump surface suitable for supporting a branch platform. Roots flare out naturally into a flat forest-floor baseline at the bottom. View straight from the side; taller than wide, centered, entire tree trunk and roots visible, adequate transparent margin on all sides. NO canopy, no leaves or branches high above, no separate floating pieces, no sky, no ground tile, no background, no text. High-quality hand-painted painterly realistic fantasy environment art matching dark teal banyan forests and mossy root platforms. Build a believable weight-bearing form and visible organic bark texture, not a flat icon. Actual transparent background.
+
+## Forest bat — `forest-bat.png`
+
+Generated with the built-in image generation tool on a transparent background. Runtime animation moves the wings independently of the body with a shader.
+
+Prompt: Create one isolated 2D game enemy sprite, transparent background: a small menacing flying forest bat, seen from the side at a slight three-quarter angle facing left, both broad wings spread fully, compact body with tiny glowing pale mint eyes. Hand-painted painterly fantasy game art, dark indigo and desaturated teal fur, leathery wings with turquoise highlights, detailed but clear silhouette, consistent with a luminous Indian banyan forest side-scroller. Single complete creature centered with generous transparent margin; no ground, no shadow, no text, no frame, no spritesheet. This sprite will be animated procedurally.
+
 ## Animated forest shade — `forest-shade-animations.png`
 
 Generated using the built-in `image_gen` tool with `transparent_background: true` and `forest-shade.png` as the identity/style reference. The original 1261 × 1247 RGBA source is preserved. The 4 × 4 atlas contains idle (0), walk (1–4), attack windup (5–6), lunge/swipe (7–8), recovery (9), jump anticipation (10), rise (11), fall (12), landing (13), hurt (14), and collapse (15). Runtime foot registration preserves the crouching and jumping poses at the current enemy height of 136.5 pixels.
@@ -131,3 +149,19 @@ Row 2 = slash frames 5-8: (5) slash follow-through low forward, sword diagonally
 Row 3 = thrust frames 1-4: (1) same relaxed sword guard; (2) coil torso and pull sword hand beside rear hip, sword levels horizontally right; (3) begin thrust, elbow extends and front foot steps; (4) full forward lunge, bent front knee, straight rear leg, sword and extended hand pointing horizontally RIGHT at enemy waist height.
 Row 4 = thrust frames 5-8: (5) full extension one more instant, shoulder and hip forward; (6) withdraw blade with elbow bending and weight receding; (7) step back and raise guard; (8) relaxed guard matching first pose.
 Registration is critical: each cell has the SAME prince standing height, hips near the horizontal CENTER of the cell, and soles touching one consistent baseline at 88% of cell height. Standing crown height at 25% of cell height. Knees and torso naturally lower in lunges. All weapons, heads, sash and limbs fit fully within EACH cell, with transparent empty gaps, no neighboring sprite overlap. One complete prince per cell only. No ground shadows, scenery, guides, grid lines, border, numbers, captions, text, UI, or watermark. Genuinely transparent alpha background. No painted sword trails or broad glow arcs; game code will add motion trails.
+
+## Healing amulet — `healing-amulet.png`
+
+Generated with the built-in `image_gen` tool and `transparent_background: true`.
+
+Final prompt:
+
+Use case: stylized-concept. Asset type: transparent production pickup and unlock-card illustration for an original hand-painted 2D Bengali fairy-tale forest platform game. Create exactly one magical healing amulet, isolated and centered: an ornate antique-gold circular pendant shaped like an open lotus around a luminous cyan-blue teardrop gemstone, with a short loop and a few delicate chain links at the top. The lotus petals and filigree should feel inspired by Indian jewelry, elegant and readable at 48 game pixels. Strong symmetrical silhouette, richly painted metal, restrained turquoise inner glow and tiny pale-blue motes close to the object. Front three-quarter view, no character, no hands. Genuine transparent alpha outside the pendant, 15% clear padding on every side, no floor, no scenery, no border, no text, no watermark, no broad haze or rectangular glow. Match the project's detailed painterly teal, indigo, moss green, and warm gold forest artwork; avoid flat vector art, pixel art, plastic 3D, logos, hearts, crosses, and copyrighted emblems.
+
+## Floating amulet island — `floating-amulet-island.png`
+
+Generated with the built-in `image_gen` tool and `transparent_background: true`.
+
+Final prompt:
+
+Use case: stylized-concept. Asset type: transparent production floating-island platform sprite for an original hand-painted 2D Bengali fairy-tale forest platform game. Create exactly one small floating forest island viewed from the side. It has a broad, nearly level moss-covered walkable top about twice as wide as it is tall, with an ancient cracked stone rim, tangled banyan roots wrapped around a tapered chunk of dark earth and rock, and several thin roots hanging beneath. Add subtle cyan bioluminescent moss and two or three tiny warm-gold mushrooms near the edges. Leave the center of the top clear for placing a separate magical amulet pickup. The top silhouette must be flat enough for a 2D character to stand and jump onto. Detailed painterly fantasy game art matching a luminous teal, indigo, moss green, and warm-gold enchanted Indian forest. Crisp readable silhouette at roughly 260 by 140 game pixels. Genuine transparent alpha around the object, no scenery, no character, no amulet, no text, no watermark, no frame, no broad glow or background haze. Avoid pixel art, flat vector art, glossy 3D, and a simple rectangular block.

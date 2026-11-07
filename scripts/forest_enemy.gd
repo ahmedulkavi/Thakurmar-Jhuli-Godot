@@ -1,7 +1,12 @@
 extends CharacterBody2D
 ## Terrain-aware pursuit with committed, readable jumps and melee attacks.
 
-const MAX_HEALTH: int = 3
+const MAX_HEALTH: int = 4
+const ATTACK_DAMAGE: int = 25
+const ATTACK_WINDUP: float = 0.24
+const ATTACK_ACTIVE_TIME: float = 0.14
+const ATTACK_RECOVERY: float = 0.60
+const ATTACK_LUNGE_SPEED: float = 280.0
 const SIZE_MULTIPLIER: float = 1.75
 const CONTACT_REACH: float = 22.0 + 42.0 * SIZE_MULTIPLIER * 0.5
 const BODY_SIZE := Vector2(42, 58) * SIZE_MULTIPLIER
@@ -63,6 +68,8 @@ func _ready() -> void:
 	visual = Node2D.new()
 	visual.set_script(VISUAL)
 	visual.height = 78.0 * SIZE_MULTIPLIER
+	visual.windup_duration = ATTACK_WINDUP
+	visual.lunge_duration = ATTACK_ACTIVE_TIME
 	add_child(visual)
 	art = visual.art
 	visual.reset_visual()
@@ -95,10 +102,10 @@ func _physics_process(delta: float) -> void:
 			_set_state(&"airborne")
 	elif attack_left > 0.0:
 		attack_left = maxf(0.0, attack_left - delta)
-		_set_state(&"lunge" if attack_left < 0.18 else &"windup")
-		velocity.x = attack_direction * 240.0 if state == &"lunge" else 0.0
+		_set_state(&"lunge" if attack_left < ATTACK_ACTIVE_TIME else &"windup")
+		velocity.x = attack_direction * ATTACK_LUNGE_SPEED if state == &"lunge" else 0.0
 		if attack_left <= 0.0:
-			recovery_left = 0.85
+			recovery_left = ATTACK_RECOVERY
 			_set_state(&"recover")
 	elif not grounded:
 		_set_state(&"airborne")
@@ -122,7 +129,7 @@ func _physics_process(delta: float) -> void:
 		jumping = false
 	var offset := player.global_position - global_position
 	if state == &"lunge" and not attack_has_hit and offset.x * attack_direction > -10.0 and absf(offset.x) < CONTACT_REACH and offset.y > -BODY_SIZE.y and offset.y < 122.0 and _has_attack_line():
-		attack_has_hit = player.take_damage(20, global_position)
+		attack_has_hit = player.take_damage(ATTACK_DAMAGE, global_position)
 	queue_redraw()
 
 func _set_state(next: StringName) -> void:
@@ -167,7 +174,7 @@ func _navigate(delta: float) -> void:
 		attack_direction = signf(offset.x) if absf(offset.x) > 1.0 else facing
 		facing = attack_direction
 		attack_has_hit = false
-		attack_left = 0.55
+		attack_left = ATTACK_WINDUP + ATTACK_ACTIVE_TIME
 		velocity.x = 0.0
 		_set_state(&"windup")
 	elif not is_zero_approx(direction) and jump_cooldown_left <= 0.0 and _needs_jump(direction):

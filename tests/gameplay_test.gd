@@ -47,10 +47,11 @@ func _run() -> void:
 	_key(KEY_R)
 	await _frames(2)
 	_check(absf(prince.position.x - 170.0) < 1.0, "R restarts the journey")
+	prince.position = Vector2(600, 586)
 	Input.action_press("move_right")
-	await _frames(60)
+	await _frames(25)
 	_check(prince.animation.animation == &"run", "Movement uses the run animation")
-	await _frames(90)
+	await _frames(65)
 	_check(prince.position.x > 816.0 and prince.position.x < 820.0, "Log blocks walking at its visible edge")
 	Input.action_release("move_right")
 
@@ -96,6 +97,7 @@ func _run() -> void:
 	# rather than the old floating box or the over-lowered interior surface.
 	for landing_x in [2620.0, 2650.0, 2680.0]:
 		game.restart_journey()
+		prince.collision_mask = 1
 		prince.position = Vector2(landing_x, 380)
 		await _frames(90)
 		var supported_by_root := false
@@ -106,6 +108,7 @@ func _run() -> void:
 		_check(prince.position.y > 493.0 and prince.position.y < 510.0, "Prince's feet align with the root's visible top at x=%s" % landing_x)
 		if landing_x == 2650.0:
 			await _screenshot("forest-root-landing")
+	prince.collision_mask = 9
 	game.restart_journey()
 	await _frames(3)
 
@@ -143,7 +146,7 @@ func _run() -> void:
 	_check(low_y > high_y + 40.0, "Releasing jump produces a shorter hop")
 
 	# Press shortly before landing: the buffered jump must launch on contact.
-	prince.position = Vector2(500, 470)
+	prince.position = Vector2(700, 470)
 	prince.velocity = Vector2(0, 300)
 	await _frames(2)
 	for i in range(30):
@@ -175,31 +178,40 @@ func _run() -> void:
 
 	game.restart_journey()
 	await _frames(3)
+	# This checks the original traversal geometry; combat is covered separately.
+	for bat in game.forest.bats:
+		bat.set_physics_process(false)
 	Input.action_press("move_right")
 	var next_obstacle: int = 0
-	var cleared: Array[bool] = [false, false, false]
-	var obstacle_x: Array[float] = [910.0, 1810.0, 2650.0]
+	var cleared: Array[bool] = [false, false, false, false]
+	var obstacle_x: Array[float] = [450.0, 910.0, 1810.0, 2650.0]
 	var jump_held: int = 0
-	for i in range(900):
+	var saw_sword_reveal := false
+	for i in range(1200):
 		await _frames(1)
 		if game.mode == &"complete":
 			break
+		if game.mode == &"item_reveal":
+			saw_sword_reveal = true
+			continue
+		Input.action_press("move_right")
 		if jump_held > 0:
 			jump_held -= 1
 			if jump_held == 0:
 				Input.action_release("jump")
-		if next_obstacle < 3 and prince.position.x > obstacle_x[next_obstacle] - 150.0 and prince.is_on_floor():
+		if next_obstacle < obstacle_x.size() and prince.position.x > obstacle_x[next_obstacle] - 150.0 and prince.is_on_floor():
 			Input.action_press("jump")
 			jump_held = 46
 			next_obstacle += 1
-		for j in range(3):
+		for j in range(obstacle_x.size()):
 			if prince.position.x > obstacle_x[j] + 105.0:
 				cleared[j] = true
 		if i == 320:
 			await _screenshot("forest-journey")
 	Input.action_release("move_right")
 	Input.action_release("jump")
-	_check(cleared.all(func(value: bool) -> bool: return value), "Prince clears all three obstacles using normal movement")
+	_check(saw_sword_reveal, "Collecting the sword pauses traversal for its item reveal")
+	_check(cleared.all(func(value: bool) -> bool: return value), "Prince clears the sword root and all three original obstacles using normal movement")
 	_check(game.mode == &"complete" and paused, "Reaching the banyan completes and pauses the game")
 	_check(game.heading.text == "Forest path complete", "Completion presents the ending")
 	_check(game.forest.camera.position.x > 3000.0, "Camera follows the full route")

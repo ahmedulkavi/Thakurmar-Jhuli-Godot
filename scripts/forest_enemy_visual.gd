@@ -4,6 +4,8 @@ extends Node2D
 const SHEET = preload("res://assets/forest-shade-animations.png")
 const BASELINES: Array[float] = [290, 289, 289, 285, 278, 280, 280, 277, 270, 271, 271, 271, 273, 273, 273, 272]
 @export var height: float = 136.5
+var windup_duration: float = 0.24
+var lunge_duration: float = 0.14
 var art: Sprite2D
 var frames: Array[AtlasTexture] = []
 var pose_frame: int = 0
@@ -40,9 +42,9 @@ func animate_pose(pose: StringName, elapsed: float, direction: float, tint: Colo
 			distance_walked = fmod(distance_walked + absf(horizontal_speed) * delta, 88.0)
 			index = 1 + int(distance_walked / 22.0) % 4
 		&"windup":
-			index = 5 if elapsed < 0.18 else 6
+			index = 5 if elapsed < windup_duration * 0.5 else 6
 		&"lunge":
-			index = 7 if elapsed < 0.09 else 8
+			index = 7 if elapsed < lunge_duration * 0.5 else 8
 		&"recover":
 			index = 9
 		&"jump_windup":

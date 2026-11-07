@@ -20,6 +20,8 @@ func _run() -> void:
 	prince.set_physics_process(false)
 	enemy = game.forest.enemies[0]
 	game.forest.enemies[1].set_physics_process(false)
+	for bat in game.forest.bats:
+		bat.set_physics_process(false)
 	await _place(Vector2(1200, 586), Vector2(1040, 586))
 	_check(enemy.aggroed and enemy.state == &"chase", "Visible prince triggers pursuit")
 	var walked: Dictionary = {}
@@ -75,11 +77,19 @@ func _run() -> void:
 	await _frames(15)
 	_check(prince.health == 100, "Interrupted attack cannot deal a delayed hit")
 	await _place(Vector2(1200, 586), Vector2(1125, 586))
-	await _frames(25)
-	_check(enemy.state == &"lunge" and enemy.visual.pose_frame in [7, 8] and prince.health == 80, "A committed swipe uses its attack poses and lands damage during the lunge")
+	var attack_frames := 5
+	for i in range(30):
+		await _frames(1)
+		attack_frames += 1
+		if enemy.state == &"lunge" and prince.health < 100:
+			break
+	_check(enemy.state == &"lunge" and enemy.visual.pose_frame in [7, 8] and prince.health == 75, "A committed swipe uses its attack poses and lands damage during the lunge")
+	_check(attack_frames <= 20, "Faster windup connects within a third of a second at melee distance")
 	await _screenshot("enemy-attack-swipe")
 	await _frames(12)
 	_check(enemy.state == &"recover" and enemy.visual.pose_frame == 9 and enemy.recovery_left > 0.0, "Attack recovery gives the prince a visible opening")
+	await _frames(34)
+	_check(enemy.state == &"windup", "Shorter recovery lets the shade begin another attack promptly")
 	await _place(Vector2(1200, 586), Vector2(400, 586))
 	enemy.take_damage(1, prince.position)
 	_check(enemy.aggroed and enemy.memory_left > 0.0, "Taking damage immediately provokes the shade")
@@ -107,7 +117,7 @@ func _run() -> void:
 	_check(enemy.position == paused_position and is_equal_approx(enemy.jump_windup_left, windup), "Pause freezes enemy movement and jump preparation")
 	game.restart_journey()
 	await _frames(3)
-	_check(enemy.health == 3 and enemy.visible and not enemy.aggroed and enemy.jumps_performed == 0 and enemy.jump_windup_left == 0.0, "Restart clears aggro, jumps, death, and damage state")
+	_check(enemy.health == 4 and enemy.visible and not enemy.aggroed and enemy.jumps_performed == 0 and enemy.jump_windup_left == 0.0, "Restart clears aggro, jumps, death, and damage state")
 	if failures.is_empty():
 		print("PASS: All enemy AI checks passed.")
 	else:

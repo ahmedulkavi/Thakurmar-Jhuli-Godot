@@ -20,6 +20,8 @@ func _run() -> void:
 	enemy = game.forest.enemies[0]
 	for shade in game.forest.enemies:
 		shade.set_physics_process(false)
+	for bat in game.forest.bats:
+		bat.set_physics_process(false)
 	prince.position = Vector2(1320, 586)
 	enemy.position = Vector2(1400, 586)
 	await _frames(40)
@@ -30,10 +32,10 @@ func _run() -> void:
 	prince.attack()
 	await _frames(3)
 	_check(prince.attack_kind == &"slash" and prince.combat_visual.pose_frame <= 1, "First attack visibly winds up for an overhead slash")
-	_check(enemy.health == 3, "Slash windup cannot deal damage before the blade comes forward")
+	_check(enemy.health == 4, "Slash windup cannot deal damage before the blade comes forward")
 	await _screenshot("sword-windup")
 	await _frames(7)
-	_check(enemy.health == 2, "Slash damage lands during the cutting frames")
+	_check(enemy.health == 3, "Slash damage lands during the cutting frames")
 	_check(prince.combat_visual.pose_frame >= 3 and prince.combat_visual.pose_frame <= 5, "Impact holds a cutting pose instead of a windup pose")
 	_check(not prince.combat_visual.impacts.is_empty(), "Sword contact produces an impact spark")
 	await _screenshot("sword-slash")
@@ -43,9 +45,9 @@ func _run() -> void:
 	prince.attack()
 	await _frames(3)
 	_check(prince.attack_kind == &"thrust" and prince.combat_visual.pose_frame in [8, 9], "Follow-up attack coils into a distinct thrust windup")
-	_check(enemy.health == 2, "Thrust windup cannot damage the target")
+	_check(enemy.health == 3, "Thrust windup cannot damage the target")
 	await _frames(7)
-	_check(enemy.health == 1 and prince.combat_visual.pose_frame in [10, 11, 12], "Thrust extends the body and blade as its damage lands")
+	_check(enemy.health == 2 and prince.combat_visual.pose_frame in [10, 11, 12], "Thrust extends the body and blade as its damage lands")
 	await _screenshot("sword-thrust")
 
 	# A press in late recovery queues exactly one follow-up, even if held.

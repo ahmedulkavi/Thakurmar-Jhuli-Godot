@@ -1,6 +1,6 @@
 # The Prince's Forest — Thakurmar Jhuli
 
-A native Godot recreation of the game in `old-implementation/Side Scroll`: a short journey through a luminous forest. Guide the prince over a fallen log, mossy rocks, and banyan roots, claim a glowing sword, and fight forest shades on the way to the glowing tree.
+A native Godot recreation of the game in `old-implementation/Side Scroll`: a short journey through a luminous forest. Claim the glowing sword near the start, jump between branches, and fight forest shades and flying bats on the way to the glowing tree.
 
 ## Play
 
@@ -10,7 +10,9 @@ Open **`project.godot` in Godot 4.7.2** and press **F6** with `scenes/main.tscn`
 | --- | --- | --- |
 | Move | A / D or Left / Right | Left stick or D-pad |
 | Jump | Space | A / bottom face button |
+| Climb revealed ladder | W / Up; S / Down | D-pad up / down or left stick |
 | Attack / chain sword strikes after pickup | J / X / left mouse button | X / left face button |
+| Focus healing after amulet pickup | Hold H | B / right face button |
 | Pause / resume | Esc or the on-screen Pause button | Start |
 | Restart, including while paused or finished | R | Y / top face button |
 | Toggle fullscreen | F11 | — |
@@ -21,15 +23,25 @@ Hold jump for a higher leap; release it for a short hop. The controller includes
 
 The rocks are a solid obstacle to jump over. Landing on them makes the prince slide back to the ground; they cannot be used as a platform or a jumping surface.
 
-Jump onto the raised, anvil-shaped root to automatically collect the glowing Forest Blade. Attacks use painted full-body poses with an overhead slash, a lunging thrust, and a return to sword guard. Press the same attack button again to alternate slash and thrust; a brief gap returns to the opening slash. A press near the end of recovery queues the next attack, while holding the button performs only one attack. Bent knees, shoulder turns, and the trailing sash carry the movement through eight poses per attack.
+Jump onto the raised, anvil-shaped root near the start to automatically collect the glowing Forest Blade. Collection pauses the journey for an animated item reveal with the blade, a light ring, sparks, its name, and a short description before control returns automatically. Attacks use painted full-body poses with an overhead slash, a lunging thrust, and a return to sword guard. Press the same attack button again to alternate slash and thrust; a brief gap returns to the opening slash. A press near the end of recovery queues the next attack, while holding the button performs only one attack. Bent knees, shoulder turns, and the trailing sash carry the movement through eight poses per attack.
 
-The prince takes a small physical step into grounded strikes and keeps normal movement in the air. The sword can damage each shade once per attack, only during the cutting or extended thrust frames, and cannot pass through solid obstacles. Hits add a brief impact hold, sparks, and a blade trail. Taking damage interrupts an attack and cancels a queued follow-up. Two shades guard the final stretch. Their orange glow warns of an approaching lunge; strike to interrupt them or jump clear. Three sword hits defeat a shade.
+Beyond the rocks, five rooted branch platforms form a staircase up and back down. Jump through a branch from below to land on top, and hold jump to reach the next branch. The ground path remains open in front of the trunks.
+
+Defeat all three bats to make a single ladder appear in a smoky magic poof. Its foot rests on the highest central branch, and it leads to a broad raised deck. Move across the deck and jump to the surrounding upper branches. Hold **W / Up** to climb or **S / Down** to descend. The prince steps off automatically at either end; jump to leave the ladder early. Climbing uses separate upward and downward sprite animations.
+
+From the rightmost upper branch, make a running jump to the floating island and collect the Healing Amulet. Its animated unlock presentation introduces the blue magic bar beneath stamina. The bar starts empty and each confirmed sword hit grants **20 magic**; missed and blocked attacks grant none. Hold **H** with at least **40 magic** while standing to focus for **0.9 seconds**, spend the magic, and restore **30 health**. The prince cannot move during focus. Releasing early or taking damage cancels healing without spending magic.
+
+The prince takes a small physical step into grounded strikes and keeps normal movement in the air. The sword can damage each shade once per attack, only during the cutting or extended thrust frames, and cannot pass through solid obstacles. Hits add a brief impact hold, sparks, and a blade trail. Taking damage interrupts an attack and cancels a queued follow-up. Two shades guard the final stretch. Their orange glow warns of an approaching lunge; strike to interrupt them or jump clear. Four sword hits defeat a shade. Their windup lasts 0.24 seconds, followed by a faster lunge and 0.60 seconds of recovery.
 
 After pickup, movement uses eight running poses with a natural forward-and-back sword-arm swing: the gripping hand travels behind the hip, passes beside the thigh, and swings forward as the opposite arm counter-swings. The short sword follows the hand and wrist through that arc. The running cycle follows distance travelled; registered hips and soles keep the body aligned when changing direction or entering combat. Jump, landing, and recoil use their own armed poses.
 
-The health bar starts at 100. A shade's lunge deals 20 damage, knocks the prince back, and grants one second of protection with a flashing sprite. At zero health, use **Try Again** or **R** to restart. Restart restores health, enemies, and the sword pickup. Pause freezes combat along with movement.
+The health bar starts at 100. A shade's lunge deals 25 damage, knocks the prince back, and grants one second of protection with a flashing sprite. At zero health, use **Try Again** or **R** to restart. Restart restores health, stamina, enemies, and the sword pickup. Pause freezes combat along with movement.
+
+The green stamina bar below health starts at **100**. Each slash or thrust costs **25 stamina** when it begins, including attacks that miss or get interrupted. Four rapid attacks exhaust the pool. Stamina recovers at **25 per second** after **0.55 seconds** without starting another attack. A strike with some stamina remaining but less than 25 still executes, empties the bar, and delays the next regeneration for **1 second**. At zero stamina, attacks are blocked; each fresh exhausted press restarts that longer delay. Wait rather than repeatedly pressing attack to recover. Queued follow-ups require some stamina, and holding a rejected attack does not trigger it later. Running and jumping do not consume stamina. Pause and defeat freeze recovery.
 
 Shades use painted walking, attack, jump, landing, recoil, and collapse poses. They notice the prince through line of sight, remember him for four seconds after losing sight, and pursue until he escapes their range or stays hidden. While chasing, they crouch and jump over the log, rocks, and raised root. Terrain probes prevent jumps into tall walls or low ceilings, and enemies return to their starting positions after pursuit ends. Attacks have a committed direction and a recovery period; sword hits interrupt them. Defeat removes the hitbox immediately, then plays a short collapse and fade.
+
+Three forest bats hover and patrol at different heights. Their glow turns orange before they dive at the prince; their dive deals 15 damage. Two sword hits defeat a bat, and a sword hit interrupts its attack. Bats return to their roosts after a dive and reset on restart.
 
 ## Project layout
 
@@ -37,11 +49,14 @@ Shades use painted walking, attack, jump, landing, recoil, and collapse poses. T
 - `scenes/forest.tscn` — editable 3840-pixel level, parallax layers, physical obstacles, particles, goal area, and camera.
 - `scenes/prince.tscn` — `CharacterBody2D`, 44 × 122 collision shape, shadow, and `AnimatedSprite2D`.
 - `scenes/prince_frames.tres` — the original 14 sprite frames mapped to idle, run, rise, fall, and landing animations.
-- `scripts/player.gd` — exported movement settings and jump behavior.
+- `scripts/player.gd` — movement, jumping, sword combat, health, stamina, magic generation, and focused healing.
 - `scripts/prince_combat_visual.gd` — armed running (`assets/prince-armed-run-v2.png`), jump/landing/recoil (`assets/prince-armed-locomotion.png`), and slash/thrust poses (`assets/prince-combat-sheet.png`), plus blade trails and impact sparks.
 - `scripts/sword_visual.gd` and `scripts/sword_pickup.gd` — glowing sword pickup and automatic collection on the raised root.
 - `scripts/forest_enemy.gd` — shade awareness, pursuit, obstacle jumps, committed lunges, damage, and defeat.
 - `scripts/forest_enemy_visual.gd` — registered enemy movement and action poses using `assets/forest-shade-animations.png`.
+- `scripts/forest_bat.gd` and `shaders/bat_wings.gdshader` — flying bat patrols, telegraphed dives, combat, and wing animation.
+- `scripts/forest_ladder.gd` and `scripts/prince_climb_visual.gd` — bat-gated ladder, climbing controls, and eight-frame climb sheet.
+- `scripts/magic_amulet.gd` — animated amulet pickup on the floating upper island.
 - `scripts/forest.gd` — journey reset, camera tracking, goal detection, and mist tweens.
 - `scripts/main.gd` — native Godot interface, input, pause, and completion flow.
 - `assets/` — copies of the original artwork, source sheets, and art provenance. All runtime assets are here.
@@ -50,9 +65,13 @@ Shades use painted walking, attack, jump, landing, recoil, and collapse poses. T
 - `tests/combat_animation_test.gd` — windup and strike timing, alternating attacks, input buffering, pose mirroring, interrupts, and airborne combat checks.
 - `tests/resolution_test.gd` — adaptive rendering from 816 × 564 to QHD, aspect ratios, paused resizing, mouse coordinates, and native fullscreen checks.
 - `tests/enemy_ai_test.gd` — jumps over every obstacle in both directions, sight and pursuit memory, clearance checks, interrupts, defeat, pause, and reset.
+- `tests/stamina_test.gd` — attack costs, exhaustion, delayed regeneration, combo buffering, free movement, pause, defeat, and reset behavior.
+- `tests/forest_expansion_test.gd` — early sword pickup, the full branch staircase, bat attacks, sword hits, pause, and reset.
+- `tests/ladder_test.gd` — bat-gated ladder reveal, climbing in both directions, upper platforms, pause, and reset.
+- `tests/magic_amulet_test.gd` — floating-island jump, unlock presentation, magic from confirmed hits, healing, interruption, HUD, and reset.
 - `old-implementation/` — original browser implementation, excluded from Godot scanning with `.gdignore`.
 
-Godot handles character collisions, floor detection, animations, camera smoothing, three parallax layers, particle fireflies, UI focus, and pausing. Original artwork, level positions, and movement tuning are preserved, with sword combat added to the final stretch. The interface uses system serif and sans-serif fonts with fallbacks; proprietary font files are not bundled.
+Godot handles character collisions, floor detection, animations, camera smoothing, three parallax layers, particle fireflies, UI focus, and pausing. The interface uses system serif and sans-serif fonts with fallbacks; proprietary font files are not bundled.
 
 ## Validation
 
@@ -64,6 +83,10 @@ godot --headless --path . --fixed-fps 60 --script res://tests/combat_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/combat_animation_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/resolution_test.gd
 godot --headless --path . --fixed-fps 60 --script res://tests/enemy_ai_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/stamina_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/forest_expansion_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/ladder_test.gd
+godot --headless --path . --fixed-fps 60 --script res://tests/magic_amulet_test.gd
 ```
 
 The suite checks floor and boundary collisions, keyboard restart, running animation, the log collision, pause/resume, full and short jumps, buffered jumps, coyote time, traversal of all three obstacles, camera tracking, completion, and restarting from pause and completion. A failed check returns a nonzero exit code.
@@ -76,6 +99,8 @@ godot --path . --script res://tests/combat_test.gd -- --capture
 godot --path . --script res://tests/combat_animation_test.gd -- --capture
 godot --path . --fixed-fps 60 --script res://tests/resolution_test.gd -- --capture
 godot --path . --fixed-fps 60 --script res://tests/enemy_ai_test.gd -- --capture
+godot --path . --fixed-fps 60 --script res://tests/stamina_test.gd -- --capture
+godot --path . --fixed-fps 60 --script res://tests/forest_expansion_test.gd -- --capture
 ```
 
 Validated using Godot 4.7.2 with the Compatibility renderer. No external plugins are required.

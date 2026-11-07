@@ -3,16 +3,32 @@ extends CharacterBody2D
 ## Feet are the origin. Physics matches the original 1280 x 720 game.
 
 signal health_changed(current: int, maximum: int)
+signal stamina_changed(current: float, maximum: float)
+signal magic_changed(current: float, maximum: float)
 signal sword_equipped
+signal amulet_equipped
+signal healing_completed(amount: int)
 signal died
 
 const MAX_HEALTH: int = 100
+const MAX_STAMINA: float = 100.0
+const MAX_MAGIC: float = 100.0
+const ATTACK_STAMINA_COST: float = 25.0
+const MAGIC_PER_HIT: float = 20.0
+const HEAL_MAGIC_COST: float = 40.0
+const HEAL_AMOUNT: int = 30
+const HEAL_CHANNEL_TIME: float = 0.9
+const STAMINA_REGEN_RATE: float = 25.0
+const STAMINA_REGEN_DELAY: float = 0.55
+const STAMINA_EXHAUSTION_DELAY: float = 1.0
 const SWING_DURATION: float = 0.40
 const ATTACK_COOLDOWN: float = 0.44
 const SLASH_ACTIVE_START: float = 0.125
 const THRUST_ACTIVE_START: float = 0.09
 const ACTIVE_END: float = 0.24
 const COMBAT_VISUAL = preload("res://scripts/prince_combat_visual.gd")
+const CLIMB_VISUAL = preload("res://scripts/prince_climb_visual.gd")
+const CLIMB_SPEED: float = 180.0
 
 @export var speed: float = 300.0
 @export var acceleration: float = 2000.0
@@ -30,7 +46,14 @@ var landing_left: float = 0.0
 var facing: float = 1.0
 var slide_direction: float = 0.0
 var health: int = MAX_HEALTH
+var stamina: float = MAX_STAMINA
+var magic: float = 0.0
+var stamina_regen_left: float = 0.0
 var has_sword: bool = false
+var has_amulet: bool = false
+var is_healing: bool = false
+var healing_elapsed: float = 0.0
+var heal_flash_left: float = 0.0
 var invulnerable_left: float = 0.0
 var knockback_left: float = 0.0
 var swing_left: float = 0.0
@@ -42,11 +65,17 @@ var next_attack_kind: StringName = &"slash"
 var chain_left: float = 0.0
 var attack_buffer_left: float = 0.0
 var hitstop_left: float = 0.0
+var climb_ladder: ForestLadder
+var is_climbing: bool = false
+var climb_visual: Node2D
 
 func _ready() -> void:
 	combat_visual = Node2D.new()
 	combat_visual.set_script(COMBAT_VISUAL)
 	add_child(combat_visual)
+	climb_visual = Node2D.new()
+	climb_visual.set_script(CLIMB_VISUAL)
+	add_child(climb_visual)
 
 func _physics_process(delta: float) -> void:
 	if health <= 0:
@@ -59,7 +88,14 @@ func _physics_process(delta: float) -> void:
 	swing_left = maxf(0.0, swing_left - combat_delta)
 	chain_left = maxf(0.0, chain_left - combat_delta)
 	attack_buffer_left = maxf(0.0, attack_buffer_left - delta)
+	_regenerate_stamina(delta)
+	heal_flash_left = maxf(0.0, heal_flash_left - delta)
+	queue_redraw()
 	combat_visual.tick(delta, velocity.x)
+	if _process_healing(delta):
+		return
+	if _process_climbing(delta):
+		return
 	var grounded := is_on_floor() and is_zero_approx(slide_direction)
 	coyote_left = coyote_time if grounded else maxf(0.0, coyote_left - delta)
 	buffer_left = maxf(0.0, buffer_left - delta)
@@ -89,7 +125,7 @@ func _physics_process(delta: float) -> void:
 		velocity.y = -260.0
 	move_and_slide()
 	if Input.is_action_just_pressed("attack"):
-		if not attack() and has_sword and cooldown_left <= 0.14:
+		if not attack() and has_sword and cooldown_left <= 0.14 and stamina > 0.0:
 			attack_buffer_left = 0.18
 	if attack_buffer_left > 0.0 and cooldown_left <= 0.0 and swing_left <= 0.0:
 		attack()
@@ -116,16 +152,34 @@ func _physics_process(delta: float) -> void:
 	_update_combat_visuals()
 	$Shadow.visible = landed
 
-func equip_sword() -> void:
+func equip_sword(show_unlock: bool = false) -> void:
 	if has_sword or health <= 0:
 		return
 	has_sword = true
 	_update_combat_visuals()
-	sword_equipped.emit()
+	if show_unlock:
+		sword_equipped.emit()
+
+func equip_amulet() -> void:
+	if has_amulet or health <= 0:
+		return
+	has_amulet = true
+	_set_magic(0.0, true)
+	amulet_equipped.emit()
 
 func attack() -> bool:
-	if not has_sword or health <= 0 or cooldown_left > 0.0 or swing_left > 0.0 or get_tree().paused:
+	if not has_sword or health <= 0 or get_tree().paused or is_climbing or is_healing:
 		return false
+	if stamina <= 0.0:
+		# Each exhausted press restarts recovery, including during a paid swing.
+		stamina_regen_left = maxf(stamina_regen_left, STAMINA_EXHAUSTION_DELAY)
+		attack_buffer_left = 0.0
+		return false
+	if cooldown_left > 0.0 or swing_left > 0.0:
+		return false
+	var overdrawn := stamina < ATTACK_STAMINA_COST
+	_set_stamina(stamina - ATTACK_STAMINA_COST)
+	stamina_regen_left = STAMINA_EXHAUSTION_DELAY if overdrawn else STAMINA_REGEN_DELAY
 	attack_kind = next_attack_kind if chain_left > 0.0 else &"slash"
 	next_attack_kind = &"thrust" if attack_kind == &"slash" else &"slash"
 	chain_left = 0.9
@@ -134,6 +188,19 @@ func attack() -> bool:
 	cooldown_left = ATTACK_COOLDOWN
 	swing_targets.clear()
 	return true
+
+func _set_stamina(value: float) -> void:
+	var next := clampf(value, 0.0, MAX_STAMINA)
+	if stamina != next:
+		stamina = next
+		stamina_changed.emit(stamina, MAX_STAMINA)
+
+func _regenerate_stamina(delta: float) -> void:
+	# Only the part of this physics step after the recovery delay can refill.
+	var recovery_delta := maxf(0.0, delta - stamina_regen_left)
+	stamina_regen_left = maxf(0.0, stamina_regen_left - delta)
+	if recovery_delta > 0.0 and swing_left <= 0.0 and stamina < MAX_STAMINA:
+		_set_stamina(stamina + STAMINA_REGEN_RATE * recovery_delta)
 
 func _is_striking() -> bool:
 	var elapsed := SWING_DURATION - swing_left
@@ -155,7 +222,10 @@ func _hit_sword_targets() -> void:
 		if not get_world_2d().direct_space_state.intersect_ray(ray).is_empty():
 			continue
 		swing_targets.append(target.get_instance_id())
+		var health_before: int = target.get("health")
 		target.take_damage(1, global_position)
+		if int(target.get("health")) < health_before:
+			_add_magic(MAGIC_PER_HIT)
 		hitstop_left = 0.035
 		combat_visual.add_impact(target.global_position + Vector2(0, -42))
 
@@ -163,6 +233,8 @@ func take_damage(amount: int, source: Vector2) -> bool:
 	if health <= 0 or invulnerable_left > 0.0 or amount <= 0 or get_tree().paused:
 		return false
 	health = maxi(0, health - amount)
+	_cancel_healing()
+	_stop_climbing()
 	invulnerable_left = 1.0
 	knockback_left = 0.18
 	# A hit breaks the action instead of leaving a rigid attack pose on recoil.
@@ -185,7 +257,18 @@ func take_damage(amount: int, source: Vector2) -> bool:
 
 func _update_combat_visuals() -> void:
 	var tint := Color(1.0, 0.65, 0.5, 0.55) if invulnerable_left > 0.0 and fmod(invulnerable_left, 0.16) > 0.08 else Color.WHITE
+	if is_healing:
+		tint = Color(0.68, 0.92, 1.0)
 	animation.modulate = tint
+	if is_healing:
+		if has_sword:
+			animation.hide()
+			combat_visual.show_guard(attack_kind, facing, tint)
+		else:
+			combat_visual.hide_pose()
+			animation.show()
+			animation.play(&"idle")
+		return
 	var guarding := has_sword and is_on_floor() and absf(velocity.x) < 15.0 and landing_left <= 0.0 and knockback_left <= 0.0
 	if has_sword:
 		animation.hide()
@@ -209,6 +292,7 @@ func _rock_slide_direction() -> float:
 	return 0.0
 
 func reset_to(start: Vector2) -> void:
+	_stop_climbing()
 	position = start
 	velocity = Vector2.ZERO
 	coyote_left = 0.0
@@ -217,7 +301,14 @@ func reset_to(start: Vector2) -> void:
 	facing = 1.0
 	slide_direction = 0.0
 	health = MAX_HEALTH
+	stamina = MAX_STAMINA
+	magic = 0.0
+	stamina_regen_left = 0.0
 	has_sword = false
+	has_amulet = false
+	is_healing = false
+	healing_elapsed = 0.0
+	heal_flash_left = 0.0
 	invulnerable_left = 0.0
 	knockback_left = 0.0
 	swing_left = 0.0
@@ -234,3 +325,108 @@ func reset_to(start: Vector2) -> void:
 	animation.flip_h = false
 	animation.play(&"idle")
 	health_changed.emit(health, MAX_HEALTH)
+	stamina_changed.emit(stamina, MAX_STAMINA)
+	magic_changed.emit(magic, MAX_MAGIC)
+	queue_redraw()
+
+func _set_magic(value: float, force_emit: bool = false) -> void:
+	var next := clampf(value, 0.0, MAX_MAGIC)
+	if magic != next or force_emit:
+		magic = next
+		magic_changed.emit(magic, MAX_MAGIC)
+
+func _add_magic(amount: float) -> void:
+	if has_amulet and amount > 0.0:
+		_set_magic(magic + amount)
+
+func _process_healing(delta: float) -> bool:
+	if is_healing:
+		if not Input.is_action_pressed("heal") or not is_on_floor() or magic < HEAL_MAGIC_COST or health >= MAX_HEALTH:
+			_cancel_healing()
+			return false
+		velocity = Vector2.ZERO
+		healing_elapsed += delta
+		_update_combat_visuals()
+		if healing_elapsed >= HEAL_CHANNEL_TIME:
+			_set_magic(magic - HEAL_MAGIC_COST)
+			var before := health
+			health = mini(MAX_HEALTH, health + HEAL_AMOUNT)
+			health_changed.emit(health, MAX_HEALTH)
+			healing_completed.emit(health - before)
+			heal_flash_left = 0.55
+			is_healing = false
+			healing_elapsed = 0.0
+			_update_combat_visuals()
+		return true
+	if Input.is_action_pressed("heal") and has_amulet and health < MAX_HEALTH and magic >= HEAL_MAGIC_COST and is_on_floor() and swing_left <= 0.0 and knockback_left <= 0.0 and not is_climbing:
+		is_healing = true
+		healing_elapsed = 0.0
+		velocity = Vector2.ZERO
+		_update_combat_visuals()
+		return true
+	return false
+
+func _cancel_healing() -> void:
+	if not is_healing:
+		return
+	is_healing = false
+	healing_elapsed = 0.0
+	_update_combat_visuals()
+	queue_redraw()
+
+func _draw() -> void:
+	if not is_healing and heal_flash_left <= 0.0:
+		return
+	var center := Vector2(0, -62)
+	var progress := healing_elapsed / HEAL_CHANNEL_TIME if is_healing else 1.0
+	var alpha := 0.85 if is_healing else heal_flash_left / 0.55
+	draw_arc(center, 34.0 + progress * 9.0, -PI * 0.5, -PI * 0.5 + TAU * progress, 40, Color(0.35, 0.85, 1.0, alpha), 4.0, true)
+	draw_arc(center, 48.0 + progress * 5.0, PI * 0.5, PI * 0.5 - TAU * progress, 40, Color(0.68, 0.96, 1.0, alpha * 0.55), 2.0, true)
+	for i in range(6):
+		var angle := float(i) * TAU / 6.0 + progress * 2.0
+		var mote := center + Vector2(cos(angle), sin(angle)) * (28.0 + float(i % 2) * 17.0)
+		draw_circle(mote, 2.5 + progress * 1.5, Color(0.63, 0.94, 1.0, alpha))
+
+func _process_climbing(delta: float) -> bool:
+	if climb_ladder == null or not climb_ladder.ready_for_climb():
+		if is_climbing:
+			_stop_climbing()
+		return false
+	var vertical := Input.get_axis("move_up", "move_down")
+	if is_climbing:
+		if Input.is_action_just_pressed("jump"):
+			_stop_climbing()
+			velocity.y = jump_velocity
+			buffer_left = 0.0
+			return false
+	elif absf(vertical) > 0.1 and absf(global_position.x - climb_ladder.global_position.x) < 32.0 and position.y >= ForestLadder.TOP_Y - 4.0 and position.y <= ForestLadder.BOTTOM_Y + 4.0 and ((vertical < 0.0 and position.y > ForestLadder.TOP_Y + 4.0) or (vertical > 0.0 and position.y < ForestLadder.BOTTOM_Y - 4.0)):
+		is_climbing = true
+		collision_mask = 1
+		velocity = Vector2.ZERO
+		swing_left = 0.0
+		attack_buffer_left = 0.0
+	else:
+		return false
+	position.x = move_toward(position.x, climb_ladder.position.x, 600.0 * delta)
+	position.y = clampf(position.y + vertical * CLIMB_SPEED * delta, ForestLadder.TOP_Y, ForestLadder.BOTTOM_Y)
+	velocity = Vector2.ZERO
+	coyote_left = 0.0
+	buffer_left = 0.0
+	if (vertical < -0.1 and position.y <= ForestLadder.TOP_Y) or (vertical > 0.1 and position.y >= ForestLadder.BOTTOM_Y):
+		# Start just above the one-way platform so normal physics can land on it.
+		position.y -= 1.0
+		_stop_climbing()
+		animation.play(&"idle")
+		_update_combat_visuals()
+		return true
+	animation.hide()
+	combat_visual.hide_pose()
+	climb_visual.show_climb(vertical, delta)
+	$Shadow.hide()
+	return true
+
+func _stop_climbing() -> void:
+	is_climbing = false
+	collision_mask = 9
+	if climb_visual:
+		climb_visual.hide()

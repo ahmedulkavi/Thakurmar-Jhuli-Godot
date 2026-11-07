@@ -46,7 +46,7 @@ func _process(delta: float) -> void:
 func _on_body_entered(body: Node2D) -> void:
 	if not collected and body is ForestPrince and body.health > 0:
 		collected = true
-		body.equip_sword()
+		body.equip_sword(true)
 		hide()
 
 func reset_pickup() -> void:
