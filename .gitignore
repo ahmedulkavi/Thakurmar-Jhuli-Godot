@@ -1,0 +1,20 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Godot 3.x generated files
+.import/
+export.cfg
+
+# Imported translations generated from CSV files
+*.translation
+
+# Mono / C# generated files
+.mono/
+data_*/
+mono_crash.*.json
+
+# Project test artifacts
+artifacts/
+tests/*.log
+.test-user-data/

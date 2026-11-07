@@ -1,0 +1,44 @@
+const { chromium } = require('playwright-core');
+(async () => {
+  const browser = await chromium.launch({ headless: true, executablePath: 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', args: ['--disable-gpu'] });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: Number(process.env.DPR || 1) });
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  page.on('response', r => { if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`); });
+  await page.goto('http://127.0.0.1:3000', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1000);
+  const canvasSize = await page.evaluate(() => { const canvas = document.querySelector('#game canvas'); const box = canvas.getBoundingClientRect(); return { pixels: [canvas.width, canvas.height], display: [box.width, box.height] }; });
+  if (canvasSize.display[0] > canvasSize.pixels[0] + 1 || canvasSize.display[1] > canvasSize.pixels[1] + 1) errors.push('Game canvas is being enlarged and softened by CSS');
+  const state = () => page.evaluate(() => { const s = window.forestGame.scene.getScene('forest'); return { x:s.player.x, y:s.player.y, vy:s.player.body.velocity.y, camera:s.cameras.main.scrollX, mode:document.querySelector('#overlay-title').textContent, overlay:!document.querySelector('#overlay').classList.contains('hidden'), grounded:s.player.body.blocked.down || s.player.body.touching.down }; });
+  const initial = await state(); console.log('initial', initial);
+  await page.screenshot({ path: 'browser-preview.png' });
+  await page.keyboard.down('ArrowRight'); await page.waitForTimeout(1200); await page.keyboard.up('ArrowRight');
+  const moved = await state(); console.log('moved', moved);
+  if (moved.x < initial.x + 100 || moved.camera <= initial.camera) errors.push('Movement or camera follow failed');
+  await page.keyboard.down('Space'); await page.waitForTimeout(180); const jumping = await state(); console.log('jumping', jumping); await page.keyboard.up('Space');
+  if (jumping.y >= moved.y - 20 || jumping.vy >= 0) errors.push('Jump failed');
+  await page.waitForTimeout(900); const landed = await state(); console.log('landed', landed);
+  if (!landed.grounded) errors.push('Landing failed');
+  await page.keyboard.press('Escape'); const paused = await state(); console.log('paused', paused);
+  if (!paused.overlay || paused.mode !== 'Paused') errors.push('Pause failed');
+  await page.keyboard.press('Escape'); const resumed = await state(); console.log('resumed', resumed);
+  if (resumed.overlay) errors.push('Resume failed');
+  for (const [name, x, width] of [['log',910,140], ['rocks',1810,120], ['root',2650,140]]) {
+    await page.evaluate(([px]) => { const s = window.forestGame.scene.getScene('forest'); s.player.body.reset(px, 594); }, [x - width/2 - 26]);
+    await page.waitForTimeout(200);
+    await page.keyboard.down('ArrowRight'); await page.waitForTimeout(100);
+    await page.keyboard.down('Space'); await page.waitForTimeout(1400);
+    await page.keyboard.up('Space'); await page.keyboard.up('ArrowRight');
+    const after = await state(); console.log(name, after);
+    if (after.x < x + width/2) errors.push(`Could not traverse ${name}`);
+    if (!after.grounded) errors.push(`Holding jump repeated after crossing ${name}`);
+  }
+  await page.evaluate(() => { const s = window.forestGame.scene.getScene('forest'); s.player.setPosition(3520, 594); s.player.setVelocity(0,0); });
+  await page.waitForTimeout(400); const complete = await state(); console.log('complete', complete);
+  if (!complete.overlay || complete.mode !== 'Forest path complete') errors.push('Completion failed');
+  await page.locator('#overlay-button').click(); await page.waitForTimeout(300); const replayed = await state(); console.log('replayed', replayed);
+  if (replayed.overlay || Math.abs(replayed.x - initial.x) > 2) errors.push('Replay failed');
+  console.log('errors', JSON.stringify(errors));
+  await browser.close();
+  if (errors.length) process.exitCode = 1;
+})().catch(e => { console.error(e); process.exitCode = 1; });

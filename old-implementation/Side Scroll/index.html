@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08151d">
+  <title>The Prince's Forest</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="masthead"><div><span class="eyebrow">A LITTLE JOURNEY THROUGH THE WOODS</span><h1>The Prince’s <em>Forest</em></h1></div><div class="chapter"><span>01</span> THE FOREST PATH</div></header>
+    <section class="game-shell" aria-label="The Prince's Forest game">
+      <div id="game"></div>
+      <div id="loading" class="loading"><span class="spark">✦</span><span>Awakening the forest</span></div>
+      <div class="game-label"><span class="label-icon">✦</span><span>THE FOREST PATH<small>Follow the light</small></span></div>
+      <div id="overlay" class="overlay hidden" aria-live="polite"><div class="panel"><span class="panel-symbol">✦</span><p class="eyebrow" id="overlay-kicker">TAKE A BREATH</p><h2 id="overlay-title">Paused</h2><p id="overlay-copy">The forest will be here when you return.</p><button id="overlay-button" type="button">Continue journey <span>→</span></button><p class="panel-hint" id="overlay-hint">Press Esc to resume</p></div></div>
+    </section>
+    <footer><div class="controls"><div><kbd>←</kbd><kbd>→</kbd><span>or</span><kbd>A</kbd><kbd>D</kbd><small>MOVE</small></div><div><kbd class="space">SPACE</kbd><small>JUMP</small></div><div><kbd>ESC</kbd><small>PAUSE</small></div><div><kbd>R</kbd><small>RESTART</small></div></div><p>Find your way to the light <span>✦</span></p></footer>
+  </main>
+  <script src="vendor/phaser.min.js"></script>
+  <script type="module" src="src/game.js"></script>
+</body>
+</html>

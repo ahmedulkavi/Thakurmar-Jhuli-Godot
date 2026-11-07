@@ -1,0 +1,12 @@
+{
+  "name": "princes-forest",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/server.cjs",
+    "check": "node --check src/game.js && node --check src/config.js && node --check scripts/server.cjs",
+    "test:browser": "node scripts/browser-check.cjs"
+  },
+  "devDependencies": { "playwright-core": "1.39.0" }
+}

@@ -1,0 +1,226 @@
+[gd_scene load_steps=17 format=3]
+
+
+[ext_resource type="Script" path="res://scripts/forest.gd" id="1"]
+
+[ext_resource type="PackedScene" path="res://scenes/prince.tscn" id="2"]
+
+[ext_resource type="Texture2D" path="res://scenes/soft_glow.tres" id="3"]
+
+[ext_resource type="Texture2D" path="res://assets/forest-background.png" id="4"]
+
+[ext_resource type="Texture2D" path="res://assets/forest-middle.png" id="5"]
+
+[ext_resource type="Texture2D" path="res://assets/forest-foreground.png" id="6"]
+
+[ext_resource type="Texture2D" path="res://assets/ground.png" id="7"]
+
+[ext_resource type="Texture2D" path="res://assets/log.png" id="8"]
+
+[ext_resource type="Texture2D" path="res://assets/rocks.png" id="9"]
+
+[ext_resource type="Texture2D" path="res://assets/root.png" id="10"]
+
+[ext_resource type="Texture2D" path="res://assets/banyan.png" id="11"]
+
+[sub_resource type="RectangleShape2D" id="Shape_Floor"]
+size = Vector2(3840, 140)
+
+[sub_resource type="RectangleShape2D" id="Shape_Wall"]
+size = Vector2(40, 1000)
+
+[sub_resource type="RectangleShape2D" id="Shape_Log"]
+size = Vector2(140, 40)
+
+[sub_resource type="ConvexPolygonShape2D" id="Shape_Rocks"]
+points = PackedVector2Array(-60, 0, 8, -82, 60, 0)
+
+[sub_resource type="RectangleShape2D" id="Shape_Goal"]
+size = Vector2(180, 720)
+
+[node name="Forest" type="Node2D"]
+process_mode = 1
+script = ExtResource("1")
+
+[node name="DistantForest" type="Parallax2D" parent="."]
+z_index = -20
+scroll_scale = Vector2(0.36, 1)
+repeat_size = Vector2(2280, 0)
+repeat_times = 2
+
+[node name="Art" type="Sprite2D" parent="DistantForest"]
+position = Vector2(0, 0)
+modulate = Color(1, 1, 1, 1)
+scale = Vector2(1.0497237569060773, 0.994475138121547)
+texture = ExtResource("4")
+centered = false
+
+[node name="MiddleForest" type="Parallax2D" parent="."]
+z_index = -15
+scroll_scale = Vector2(0.6, 1)
+repeat_size = Vector2(2900, 0)
+repeat_times = 2
+
+[node name="Art" type="Sprite2D" parent="MiddleForest"]
+position = Vector2(0, 25)
+modulate = Color(1, 1, 1, 0.2)
+scale = Vector2(1.3351749539594844, 0.7803867403314917)
+texture = ExtResource("5")
+centered = false
+
+[node name="HangingVines" type="Parallax2D" parent="."]
+z_index = -10
+scroll_scale = Vector2(0.58, 1)
+repeat_size = Vector2(2850, 0)
+repeat_times = 2
+
+[node name="Art" type="Sprite2D" parent="HangingVines"]
+position = Vector2(0, 0)
+modulate = Color(1, 1, 1, 0.3)
+scale = Vector2(1.6065388951521984, 0.5636978579481398)
+texture = ExtResource("6")
+centered = false
+
+[node name="Ground" type="Sprite2D" parent="."]
+z_index = -2
+position = Vector2(0, 584)
+scale = Vector2(0.45, 0.45)
+texture_repeat = 2
+texture = ExtResource("7")
+centered = false
+region_enabled = true
+region_rect = Rect2(0, 0, 8534, 334)
+
+[node name="Floor" type="StaticBody2D" parent="."]
+position = Vector2(1920, 656)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Collision" type="CollisionShape2D" parent="Floor"]
+shape = SubResource("Shape_Floor")
+
+[node name="LeftBoundary" type="StaticBody2D" parent="."]
+position = Vector2(-20, 300)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Collision" type="CollisionShape2D" parent="LeftBoundary"]
+shape = SubResource("Shape_Wall")
+
+[node name="RightBoundary" type="StaticBody2D" parent="."]
+position = Vector2(3860, 300)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Collision" type="CollisionShape2D" parent="RightBoundary"]
+shape = SubResource("Shape_Wall")
+
+[node name="Log" type="StaticBody2D" parent="."]
+position = Vector2(910, 586)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Collision" type="CollisionShape2D" parent="Log"]
+position = Vector2(0, -20.0)
+shape = SubResource("Shape_Log")
+
+[node name="Art" type="Sprite2D" parent="Log"]
+z_index = 1
+position = Vector2(0, -33.0)
+scale = Vector2(0.3448275862068966, 0.5)
+texture = ExtResource("8")
+
+[node name="Rocks" type="StaticBody2D" parent="." groups=["slippery_obstacles"]]
+position = Vector2(1810, 586)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Collision" type="CollisionShape2D" parent="Rocks"]
+shape = SubResource("Shape_Rocks")
+
+[node name="Art" type="Sprite2D" parent="Rocks"]
+z_index = 1
+position = Vector2(0, -43.0)
+scale = Vector2(0.3125, 0.573170731707317)
+texture = ExtResource("9")
+
+[node name="Root" type="StaticBody2D" parent="."]
+position = Vector2(2650, 586)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Collision" type="CollisionPolygon2D" parent="Root"]
+polygon = PackedVector2Array(-72, -85, -53, -90, -29, -87, 0, -82, 28, -87, 53, -90, 71, -85, 64, 0, -64, 0)
+
+[node name="Art" type="Sprite2D" parent="Root"]
+z_index = 1
+position = Vector2(0, -50.0)
+scale = Vector2(0.31746031746031744, 0.5869565217391305)
+texture = ExtResource("10")
+
+[node name="Banyan" type="Sprite2D" parent="."]
+position = Vector2(3580, 394)
+scale = Vector2(0.518807, 0.581395)
+texture = ExtResource("11")
+
+[node name="TreeGlow" type="Sprite2D" parent="."]
+position = Vector2(3550, 574)
+scale = Vector2(3, 0.7)
+modulate = Color(0.97, 0.85, 0.5, 0.26)
+texture = ExtResource("3")
+
+[node name="Fireflies" type="CPUParticles2D" parent="."]
+z_index = 3
+position = Vector2(1920, 310)
+amount = 38
+lifetime = 6.0
+preprocess = 6.0
+texture = ExtResource("3")
+emission_shape = 3
+emission_rect_extents = Vector2(1820, 210)
+direction = Vector2(0, -1)
+spread = 55.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 3.0
+initial_velocity_max = 9.0
+scale_amount_min = 0.055
+scale_amount_max = 0.11
+color = Color(0.85, 0.96, 0.64, 0.7)
+
+[node name="Goal" type="Area2D" parent="."]
+position = Vector2(3600, 360)
+collision_layer = 0
+collision_mask = 2
+
+[node name="Collision" type="CollisionShape2D" parent="Goal"]
+shape = SubResource("Shape_Goal")
+
+[node name="Sparkles" type="CPUParticles2D" parent="Goal"]
+z_index = 3
+position = Vector2(-50, 130)
+amount = 18
+lifetime = 4.0
+preprocess = 4.0
+texture = ExtResource("3")
+emission_shape = 3
+emission_rect_extents = Vector2(90, 85)
+direction = Vector2(0, -1)
+spread = 35.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 8.0
+initial_velocity_max = 22.0
+scale_amount_min = 0.05
+scale_amount_max = 0.12
+color = Color(1, 0.85, 0.43, 0.8)
+
+[node name="Prince" parent="." instance=ExtResource("2")]
+position = Vector2(170, 586)
+
+[node name="Camera" type="Camera2D" parent="."]
+position = Vector2(640, 360)
+position_smoothing_enabled = true
+position_smoothing_speed = 5.0
+limit_left = 0
+limit_top = 0
+limit_right = 3840
+limit_bottom = 720

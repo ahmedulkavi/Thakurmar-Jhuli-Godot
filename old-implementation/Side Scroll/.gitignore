@@ -1,0 +1,5 @@
+node_modules/
+.npm-cache/
+.firefox-profile/
+browser-preview.png
+firefox-preview.png

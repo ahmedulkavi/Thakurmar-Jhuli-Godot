@@ -1,0 +1,31 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/player.gd" id="1"]
+[ext_resource type="SpriteFrames" path="res://scenes/prince_frames.tres" id="2"]
+[ext_resource type="Texture2D" path="res://scenes/soft_glow.tres" id="3"]
+
+[sub_resource type="RectangleShape2D" id="Body"]
+size = Vector2(44, 122)
+
+[node name="Prince" type="CharacterBody2D"]
+z_index = 2
+collision_layer = 2
+collision_mask = 1
+floor_snap_length = 6.0
+script = ExtResource("1")
+
+[node name="Collision" type="CollisionShape2D" parent="."]
+position = Vector2(0, -61)
+shape = SubResource("Body")
+
+[node name="Shadow" type="Sprite2D" parent="."]
+position = Vector2(0, 2)
+scale = Vector2(0.8, 0.16)
+modulate = Color(0.005, 0.02, 0.02, 0.55)
+texture = ExtResource("3")
+
+[node name="Animation" type="AnimatedSprite2D" parent="."]
+position = Vector2(0, -72)
+sprite_frames = ExtResource("2")
+animation = &"idle"
+autoplay = "idle"
