@@ -132,7 +132,7 @@ func _physics_process(delta: float) -> void:
 		jumping = false
 	var offset := player.global_position - global_position
 	if state == &"lunge" and not attack_has_hit and offset.x * attack_direction > -10.0 and absf(offset.x) < CONTACT_REACH and offset.y > -BODY_SIZE.y and offset.y < 122.0 and _has_attack_line():
-		attack_has_hit = player.take_damage(ATTACK_DAMAGE, global_position)
+		attack_has_hit = player.take_damage(ATTACK_DAMAGE, global_position, self)
 	queue_redraw()
 
 func _set_state(next: StringName) -> void:

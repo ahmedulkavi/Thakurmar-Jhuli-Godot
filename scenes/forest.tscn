@@ -96,7 +96,7 @@ centered = false
 region_enabled = true
 region_rect = Rect2(0, 0, 16000, 334)
 
-[node name="Floor" type="StaticBody2D" parent="."]
+[node name="Floor" type="StaticBody2D" parent="." groups=["landing_grass"]]
 position = Vector2(3600, 656)
 collision_layer = 1
 collision_mask = 0
@@ -120,7 +120,7 @@ collision_mask = 0
 [node name="Collision" type="CollisionShape2D" parent="RightBoundary"]
 shape = SubResource("Shape_Wall")
 
-[node name="Log" type="StaticBody2D" parent="."]
+[node name="Log" type="StaticBody2D" parent="." groups=["landing_wood"]]
 position = Vector2(910, 586)
 collision_layer = 1
 collision_mask = 0
@@ -135,7 +135,7 @@ position = Vector2(0, -33.0)
 scale = Vector2(0.3448275862068966, 0.5)
 texture = ExtResource("8")
 
-[node name="Rocks" type="StaticBody2D" parent="." groups=["slippery_obstacles"]]
+[node name="Rocks" type="StaticBody2D" parent="." groups=["landing_stone", "slippery_obstacles"]]
 position = Vector2(1810, 586)
 collision_layer = 1
 collision_mask = 0
@@ -149,7 +149,7 @@ position = Vector2(0, -43.0)
 scale = Vector2(0.3125, 0.573170731707317)
 texture = ExtResource("9")
 
-[node name="Root" type="StaticBody2D" parent="."]
+[node name="Root" type="StaticBody2D" parent="." groups=["landing_wood"]]
 position = Vector2(2650, 586)
 collision_layer = 1
 collision_mask = 0
@@ -163,7 +163,7 @@ position = Vector2(0, -50.0)
 scale = Vector2(0.31746031746031744, 0.5869565217391305)
 texture = ExtResource("10")
 
-[node name="SwordRoot" type="StaticBody2D" parent="."]
+[node name="SwordRoot" type="StaticBody2D" parent="." groups=["landing_wood"]]
 position = Vector2(450, 586)
 collision_layer = 1
 collision_mask = 0

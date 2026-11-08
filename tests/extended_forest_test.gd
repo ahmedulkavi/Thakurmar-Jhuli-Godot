@@ -55,7 +55,7 @@ func _run() -> void:
 	prince.position = Vector2(6950, 586)
 	prince.velocity = Vector2.ZERO
 	await _frames(5)
-	_check(game.mode == &"complete" and paused, "The far exit beyond the fountain completes the stage")
+	_check(game.mode == &"playing" and not paused and not game.forest.completed, "The old exit now leads toward the boss fog")
 	for failure in failures:
 		push_error(failure)
 	if failures.is_empty():

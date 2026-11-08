@@ -8,12 +8,15 @@ Open **`project.godot` in Godot 4.7.2** and press **F6** with `scenes/main.tscn`
 
 | Action | Keyboard | Controller |
 | --- | --- | --- |
-| Move | A / D or Left / Right | Left stick or D-pad |
+| Move | A / D | Left stick |
+| Select Royal / Steel stance | Left / Right arrow | D-pad left / right |
 | Jump | Space | A / bottom face button |
 | Climb revealed ladder | W / Up; S / Down | D-pad up / down or left stick |
 | Attack / chain sword strikes after pickup | J / X / left mouse button | X / left face button |
 | Focus healing after amulet pickup | Hold H | B / right face button |
 | Rest at the fountain | E | Right shoulder / RB |
+| Open merchant while resting | W / Up | D-pad up |
+| Toggle god mode (debug) | G | Select / Back |
 | Pause / resume | Esc or the on-screen Pause button | Start |
 | Restart, including while paused or finished | R | Y / top face button |
 | Toggle fullscreen | F11 | — |
@@ -46,10 +49,26 @@ Shades use painted walking, attack, jump, landing, recoil, and collapse poses. T
 
 Three guardian bats patrol the original staircase; three more hunt among the branches farther into the forest. Before diving, the blue guardians show an orange warning ring, while the other bats glow orange; their dive deals 15 damage. Two sword hits defeat a bat, and a sword hit interrupts its attack. Bats return to their roosts after a dive and reset on restart. Beyond the former ending, two branch staircases and a final ascent provide raised routes above logs, roots, rocks, and the shades on the ground. Past the banyan tree, press **E** or **RB** at the old fountain to rest. Rest fully restores health and stamina, revives enemies, and activates a checkpoint while preserving collected items and magic. The prince remains seated until another key, button, click, or tap. After a defeat, **Try Again** returns him to the fountain; a normal restart begins the journey again.
 
+Inspired by Bengali folklore descriptions of Shakchunni as a tree-dwelling spirit associated with conch-shell bangles ([USC folklore archive](https://folklore.usc.edu/bengali-legend-shakchunni/), [The Daily Star](https://online.thedailystar.net/life-living/news/top-6-bengali-supernatural-beings-you-should-know-about-halloween-3157066)).
+
+Beyond the fountain, press **E / RB** at the fog to enter Shakchunni's arena. The fog seals during the fight and checkpoint retry resets her. She moves around the arena as she fights. Climb the floating islands to reach her upper body; evade the marked locations before her arm curls out and whips toward them. Her attack torso blends into the idle and laugh poses. After every few strikes she laughs and becomes invulnerable, then attacks much faster for a short time. Defeating her completes the journey.
+
+The original looping track at `assets/forest-music.ogg` plays during the journey. Set `FOREST_MUSIC_ENABLED` in `scripts/main.gd` to disable it. Its source render can be recreated with `tools/compose_forest_music.py` (Python and NumPy), then encoded as Ogg Vorbis.
+
+Crossing the fog starts `assets/shakchunni-music-louder.ogg`, an original boss loop with synthesized Indian instrument sounds. The original version is kept at `assets/shakchunni-music.ogg`. The forest track returns after the encounter or a retry. Its render script is `tools/compose_shakchunni_music.py`.
+
+Short sound effects accompany landings, combat, healing, stance changes, and pickups. The effects in `assets/sfx/` can be regenerated with `tools/create_sound_effects.py` (Python and NumPy).
+
+Steel remains selected after a checkpoint retry; a new journey returns to Royal. The stance icon appears below the resource bars.
+
+For debugging, **G / Select** toggles god mode. The prince takes no damage, sword hits defeat enemies instantly, and Essence is unlimited. Purchases made in god mode do not spend the collected balance. The setting remains active across restarts until toggled off.
+
+While resting at the old fountain, press **W / Up** to visit the merchant. Steel Stance costs **200 Essence** and can be purchased once per journey. The purchase survives checkpoint retries; a new journey clears it. Steel reduces incoming damage by 75%. Press attack shortly before an enemy hit to counter for heavy damage; ordinary attacks are unavailable in Steel. Use up / down to choose an option and controller A / X to select it. Leave the merchant to return to the resting pose.
+
 ## Project layout
 
 - `scenes/main.tscn` — adaptive window and interface, game viewport with 1280 × 720 logical coordinates and native display rendering, and vignette.
-- `scenes/forest.tscn` — editable 7200-pixel level, parallax layers, physical obstacles, particles, goal area, and camera.
+- `scenes/forest.tscn` — forest level, parallax layers, physical obstacles, particles, and camera; the boss arena extends it at runtime.
 - `scenes/prince.tscn` — `CharacterBody2D`, 44 × 122 collision shape, shadow, and `AnimatedSprite2D`.
 - `scenes/prince_frames.tres` — the original 14 sprite frames mapped to idle, run, rise, fall, and landing animations.
 - `scripts/player.gd` — movement, jumping, sword combat, health, stamina, magic generation, and focused healing.
@@ -74,6 +93,8 @@ Three guardian bats patrol the original staircase; three more hunt among the bra
 - `tests/forest_expansion_test.gd` — early sword pickup, the full branch staircase, bat attacks, sword hits, pause, and reset.
 - `tests/extended_forest_test.gd` — the extended route, new staircase jumps, enemy reset, and relocated ending.
 - `tests/fountain_rest_test.gd` — fountain interaction, recovery, enemy reset, sitting, and checkpoint retry.
+- `tests/shakchunni_test.gd` ? fog gate, reachable islands, boss combat, phases, retry, and victory.
+- `tests/merchant_test.gd` ? merchant access, affordability, purchase, and reset checks.
 - `tests/essence_test.gd` — enemy drops, values, collection, HUD, pause, rest, and retry.
 - `tests/ladder_test.gd` — bat-gated ladder reveal, climbing in both directions, upper platforms, pause, and reset.
 - `tests/magic_amulet_test.gd` — floating-island jump, unlock presentation, magic from confirmed hits, healing, interruption, HUD, and reset.

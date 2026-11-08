@@ -9,7 +9,12 @@ signal sword_equipped
 signal amulet_equipped
 signal healing_completed(amount: int)
 signal died
+signal stance_changed(stance: StringName)
+signal sound_requested(cue: StringName)
 
+const STEEL_DEFENSE := 75
+const COUNTER_WINDOW := 0.28
+const COUNTER_DAMAGE := 4
 const MAX_HEALTH: int = 100
 const MAX_STAMINA: float = 100.0
 const MAX_MAGIC: float = 100.0
@@ -29,6 +34,7 @@ const ACTIVE_END: float = 0.24
 const COMBAT_VISUAL = preload("res://scripts/prince_combat_visual.gd")
 const CLIMB_VISUAL = preload("res://scripts/prince_climb_visual.gd")
 const CLIMB_SPEED: float = 180.0
+const STEEL_UNARMED_SHEET = preload("res://assets/prince-steel-unarmed.png")
 
 @export var speed: float = 300.0
 @export var acceleration: float = 2000.0
@@ -45,6 +51,12 @@ var buffer_left: float = 0.0
 var landing_left: float = 0.0
 var facing: float = 1.0
 var slide_direction: float = 0.0
+var stance: StringName = &"royal"
+var defense: int = 0
+var counter_window_left := 0.0
+var counter_attack := false
+var stance_flash_left := 0.0
+var god_mode: bool = false
 var health: int = MAX_HEALTH
 var stamina: float = MAX_STAMINA
 var magic: float = 0.0
@@ -72,11 +84,26 @@ var hitstop_left: float = 0.0
 var climb_ladder: ForestLadder
 var is_climbing: bool = false
 var climb_visual: Node2D
+var royal_unarmed: SpriteFrames
+var steel_unarmed: SpriteFrames
 
 func _ready() -> void:
 	combat_visual = Node2D.new()
 	combat_visual.set_script(COMBAT_VISUAL)
 	add_child(combat_visual)
+	royal_unarmed = animation.sprite_frames
+	steel_unarmed = royal_unarmed.duplicate(true)
+	for animation_name in steel_unarmed.get_animation_names():
+		for i in range(steel_unarmed.get_frame_count(animation_name)):
+			var old_frame := steel_unarmed.get_frame_texture(animation_name, i) as AtlasTexture
+			var index := int(old_frame.region.position.x / 160.0)
+			var start := roundi(index * 2172.0 / 14.0)
+			var end := roundi((index + 1) * 2172.0 / 14.0)
+			var new_frame := AtlasTexture.new()
+			new_frame.atlas = STEEL_UNARMED_SHEET
+			new_frame.region = Rect2(start, 288, end - start, 160)
+			new_frame.filter_clip = true
+			steel_unarmed.set_frame(animation_name, i, new_frame, steel_unarmed.get_frame_duration(animation_name, i))
 	climb_visual = Node2D.new()
 	climb_visual.set_script(CLIMB_VISUAL)
 	add_child(climb_visual)
@@ -92,6 +119,8 @@ func _physics_process(delta: float) -> void:
 		rest_art.position.y = -68.0 - breath * 0.55
 		rest_art.rotation = sin(rest_elapsed * 0.8) * 0.012
 		return
+	counter_window_left = maxf(0.0, counter_window_left - delta)
+	stance_flash_left = maxf(0.0, stance_flash_left - delta)
 	invulnerable_left = maxf(0.0, invulnerable_left - delta)
 	knockback_left = maxf(0.0, knockback_left - delta)
 	var combat_delta := maxf(0.0, delta - hitstop_left)
@@ -103,7 +132,7 @@ func _physics_process(delta: float) -> void:
 	_regenerate_stamina(delta)
 	heal_flash_left = maxf(0.0, heal_flash_left - delta)
 	queue_redraw()
-	combat_visual.tick(delta, velocity.x)
+	combat_visual.tick(delta, velocity.x * (0.6 if stance == &"steel" else 1.0))
 	if _process_healing(delta):
 		return
 	if _process_climbing(delta):
@@ -137,7 +166,7 @@ func _physics_process(delta: float) -> void:
 		velocity.y = -260.0
 	move_and_slide()
 	if Input.is_action_just_pressed("attack"):
-		if not attack() and has_sword and cooldown_left <= 0.14 and stamina > 0.0:
+		if not attack() and stance == &"royal" and has_sword and cooldown_left <= 0.14 and stamina > 0.0:
 			attack_buffer_left = 0.18
 	if attack_buffer_left > 0.0 and cooldown_left <= 0.0 and swing_left <= 0.0:
 		attack()
@@ -152,6 +181,7 @@ func _physics_process(delta: float) -> void:
 		landing_left = 0.0
 	if landed and not grounded:
 		landing_left = 0.18
+		sound_requested.emit(_landing_sound())
 	var next_animation: StringName = &"idle"
 	if not landed:
 		next_animation = &"rise" if velocity.y < 0.0 else &"fall"
@@ -163,6 +193,22 @@ func _physics_process(delta: float) -> void:
 		animation.play(next_animation)
 	_update_combat_visuals()
 	$Shadow.visible = landed
+
+func _landing_sound() -> StringName:
+	# Use the floor contact rather than a wall the prince may touch at the same time.
+	for i in range(get_slide_collision_count()):
+		var contact := get_slide_collision(i)
+		if contact.get_normal().dot(Vector2.UP) < 0.7:
+			continue
+		var surface := contact.get_collider() as Node
+		if surface:
+			if surface.is_in_group("landing_grass"):
+				return &"land_grass"
+			if surface.is_in_group("landing_wood"):
+				return &"land_wood"
+			if surface.is_in_group("landing_stone"):
+				return &"land_stone"
+	return &"land"
 
 func equip_sword(show_unlock: bool = false) -> void:
 	if has_sword or health <= 0:
@@ -179,9 +225,41 @@ func equip_amulet() -> void:
 	_set_magic(0.0, true)
 	amulet_equipped.emit()
 
+func set_stance(next: StringName, animate: bool = true) -> void:
+	if next == stance or next not in [&"royal", &"steel"]:
+		return
+	stance = next
+	var current_animation := animation.animation
+	var current_frame := animation.frame
+	var progress := animation.frame_progress
+	animation.sprite_frames = steel_unarmed if stance == &"steel" else royal_unarmed
+	animation.play(current_animation)
+	animation.set_frame_and_progress(current_frame, progress)
+	combat_visual.set_steel(stance == &"steel")
+	climb_visual.frames = climb_visual.steel_frames if stance == &"steel" else climb_visual.royal_frames
+	defense = STEEL_DEFENSE if stance == &"steel" else 0
+	counter_window_left = 0.0
+	counter_attack = false
+	swing_left = 0.0
+	attack_buffer_left = 0.0
+	chain_left = 0.0
+	stance_flash_left = 0.6 if animate else 0.0
+	stance_changed.emit(stance)
+	if animate:
+		sound_requested.emit(&"stance")
+	_update_combat_visuals()
+	queue_redraw()
+
 func attack() -> bool:
 	if not has_sword or health <= 0 or get_tree().paused or is_climbing or is_healing or is_resting:
 		return false
+	if stance == &"steel":
+		if cooldown_left > 0.0 or swing_left > 0.0 or stamina <= 0.0:
+			return false
+		counter_window_left = COUNTER_WINDOW
+		cooldown_left = 0.4
+		sound_requested.emit(&"stance")
+		return true
 	if stamina <= 0.0:
 		# Repeated inputs cannot postpone recovery while the prince is exhausted.
 		attack_buffer_left = 0.0
@@ -198,6 +276,7 @@ func attack() -> bool:
 	swing_left = SWING_DURATION
 	cooldown_left = ATTACK_COOLDOWN
 	swing_targets.clear()
+	sound_requested.emit(&"swing")
 	return true
 
 func _set_stamina(value: float) -> void:
@@ -234,16 +313,37 @@ func _hit_sword_targets() -> void:
 			continue
 		swing_targets.append(target.get_instance_id())
 		var health_before: int = target.get("health")
-		target.take_damage(1, global_position)
+		target.take_damage(health_before if god_mode else (COUNTER_DAMAGE if counter_attack else 1), global_position)
 		if int(target.get("health")) < health_before:
 			_add_magic(MAGIC_PER_HIT)
+			sound_requested.emit(&"hit")
 		hitstop_left = 0.035
 		combat_visual.add_impact(target.global_position + Vector2(0, -42))
 
-func take_damage(amount: int, source: Vector2) -> bool:
+func take_damage(amount: int, source: Vector2, attacker: Node2D = null) -> bool:
 	if health <= 0 or is_resting or invulnerable_left > 0.0 or amount <= 0 or get_tree().paused:
 		return false
-	health = maxi(0, health - amount)
+	if stance == &"steel" and counter_window_left > 0.0 and is_instance_valid(attacker) and attacker.is_in_group("combat_targets") and attacker.health > 0:
+		counter_window_left = 0.0
+		counter_attack = true
+		facing = signf(attacker.global_position.x - global_position.x) if absf(attacker.global_position.x - global_position.x) > 1.0 else facing
+		attack_kind = &"thrust"
+		swing_left = SWING_DURATION
+		cooldown_left = ATTACK_COOLDOWN
+		swing_targets.clear()
+		swing_targets.append(attacker.get_instance_id())
+		attacker.take_damage(attacker.health if god_mode else COUNTER_DAMAGE, global_position)
+		_add_magic(MAGIC_PER_HIT)
+		combat_visual.add_impact(attacker.global_position + Vector2(0, -42))
+		stance_flash_left = 0.35
+		sound_requested.emit(&"counter")
+		return true
+	if god_mode:
+		return false
+	counter_window_left = 0.0
+	var reduced_damage := maxi(1, ceili(amount * (100.0 - defense) / 100.0))
+	health = maxi(0, health - reduced_damage)
+	sound_requested.emit(&"hurt")
 	_cancel_healing()
 	_stop_climbing()
 	invulnerable_left = 1.0
@@ -285,6 +385,8 @@ func _update_combat_visuals() -> void:
 		animation.hide()
 		if swing_left > 0.0:
 			combat_visual.show_pose(attack_kind, SWING_DURATION - swing_left, facing, tint, _is_striking() and hitstop_left <= 0.0)
+		elif stance == &"steel" and is_on_floor() and knockback_left <= 0.0:
+			combat_visual.show_steel_guard(facing, tint, velocity.x)
 		elif guarding:
 			combat_visual.show_guard(attack_kind, facing, tint)
 		else:
@@ -305,6 +407,7 @@ func _rock_slide_direction() -> float:
 func reset_to(start: Vector2) -> void:
 	stop_resting()
 	_stop_climbing()
+	set_stance(&"royal", false)
 	position = start
 	velocity = Vector2.ZERO
 	coyote_left = 0.0
@@ -390,9 +493,11 @@ func recover_at_checkpoint(at: Vector2) -> void:
 	var sword := has_sword
 	var amulet := has_amulet
 	var saved_magic := magic
+	var saved_stance := stance
 	reset_to(at)
 	has_sword = sword
 	has_amulet = amulet
+	set_stance(saved_stance, false)
 	_set_magic(saved_magic, true)
 	_update_combat_visuals()
 
@@ -420,6 +525,7 @@ func _process_healing(delta: float) -> bool:
 			health = mini(MAX_HEALTH, health + HEAL_AMOUNT)
 			health_changed.emit(health, MAX_HEALTH)
 			healing_completed.emit(health - before)
+			sound_requested.emit(&"heal")
 			heal_flash_left = 0.55
 			is_healing = false
 			healing_elapsed = 0.0
@@ -442,6 +548,14 @@ func _cancel_healing() -> void:
 	queue_redraw()
 
 func _draw() -> void:
+	if stance_flash_left > 0.0:
+		var light := Color(0.72, 0.87, 1.0) if stance == &"steel" else Color(1.0, 0.77, 0.28)
+		var progress := 1.0 - stance_flash_left / 0.6
+		light.a = clampf(stance_flash_left / 0.6, 0.0, 1.0) * 0.85
+		draw_arc(Vector2(0, -65), 25.0 + 50.0 * progress, 0, TAU, 40, light, 4.0, true)
+		for i in range(8):
+			var ray := Vector2.from_angle(i * TAU / 8.0 + progress)
+			draw_line(Vector2(0, -65) + ray * 25.0, Vector2(0, -65) + ray * (40.0 + 45.0 * progress), light, 2.0, true)
 	if not is_healing and heal_flash_left <= 0.0:
 		return
 	var center := Vector2(0, -62)

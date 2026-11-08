@@ -98,7 +98,7 @@ func _physics_process(delta: float) -> void:
 		&"dive":
 			velocity = dive_direction * DIVE_SPEED
 			if not dive_hit and center.distance_to(target) < 48.0 and _has_line_of_sight(center, target):
-				dive_hit = player.take_damage(DAMAGE, global_position)
+				dive_hit = player.take_damage(DAMAGE, global_position, self)
 			if state_left <= 0.0 or dive_hit:
 				state = &"return"
 				state_left = 0.8

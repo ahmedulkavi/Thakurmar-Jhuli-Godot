@@ -4,6 +4,9 @@ extends Node2D
 const SHEET = preload("res://assets/prince-combat-sheet.png")
 const LOCOMOTION_SHEET = preload("res://assets/prince-armed-locomotion.png")
 const RUN_SHEET = preload("res://assets/prince-armed-run-v2.png")
+const STEEL_SHEET = preload("res://assets/prince-steel-combat.png")
+const STEEL_LOCOMOTION_SHEET = preload("res://assets/prince-steel-locomotion.png")
+const STEEL_WALK_SHEET = preload("res://assets/prince-steel-walk.png")
 const RUN_POSE_SCALE: float = 122.0 / 383.0
 const RUN_ORIGIN := Vector2(254.0, 423.0)
 const FRAME_TIMES: Array[float] = [0.045, 0.045, 0.035, 0.03, 0.04, 0.045, 0.065, 0.095]
@@ -24,6 +27,13 @@ var art: Sprite2D
 var frames: Array[AtlasTexture] = []
 var locomotion_frames: Array[AtlasTexture] = []
 var run_frames: Array[AtlasTexture] = []
+var royal_frames: Array[AtlasTexture] = []
+var royal_locomotion_frames: Array[AtlasTexture] = []
+var royal_run_frames: Array[AtlasTexture] = []
+var steel_frames: Array[AtlasTexture] = []
+var steel_locomotion_frames: Array[AtlasTexture] = []
+var steel_walk_frames: Array[AtlasTexture] = []
+var steel_equipped := false
 var pose_frame: int = 0
 var pose_set: StringName = &"combat"
 var locomotion_frame: int = 0
@@ -45,9 +55,15 @@ func _ready() -> void:
 	clean_alpha.shader = shader
 	art.material = clean_alpha
 	add_child(art)
-	frames = _atlas_frames(SHEET)
-	locomotion_frames = _atlas_frames(LOCOMOTION_SHEET)
-	run_frames = _atlas_frames(RUN_SHEET, 2)
+	royal_frames = _atlas_frames(SHEET)
+	royal_locomotion_frames = _atlas_frames(LOCOMOTION_SHEET)
+	royal_run_frames = _atlas_frames(RUN_SHEET, 2)
+	steel_frames = _atlas_frames(STEEL_SHEET)
+	steel_locomotion_frames = _atlas_frames(STEEL_LOCOMOTION_SHEET)
+	steel_walk_frames = _atlas_frames(STEEL_WALK_SHEET, 2)
+	frames = royal_frames
+	locomotion_frames = royal_locomotion_frames
+	run_frames = royal_run_frames
 	hide()
 
 func _atlas_frames(sheet: Texture2D, rows: int = 4) -> Array[AtlasTexture]:
@@ -62,6 +78,14 @@ func _atlas_frames(sheet: Texture2D, rows: int = 4) -> Array[AtlasTexture]:
 		atlas.filter_clip = true
 		result.append(atlas)
 	return result
+
+func set_steel(enabled: bool) -> void:
+	if enabled == steel_equipped:
+		return
+	steel_equipped = enabled
+	frames = steel_frames if enabled else royal_frames
+	locomotion_frames = steel_locomotion_frames if enabled else royal_locomotion_frames
+	run_frames = steel_walk_frames if enabled else royal_run_frames
 
 func tick(delta: float, horizontal_speed: float = 0.0) -> void:
 	breath_clock += delta
@@ -92,6 +116,12 @@ func show_guard(kind: StringName, direction: float, tint: Color) -> void:
 	# The sprite origin is at the soles, keeping feet planted while breathing.
 	art.scale.y = POSE_SCALE * (1.0 + sin(breath_clock * 2.4) * 0.009)
 
+func show_steel_guard(direction: float, tint: Color, horizontal_speed: float) -> void:
+	if absf(horizontal_speed) > 15.0:
+		show_locomotion(&"run", direction, tint, 0.0, 0.0, 0.0)
+	else:
+		show_guard(&"slash", direction, tint)
+
 func _set_frame(index: int, direction: float, tint: Color) -> void:
 	pose_set = &"combat"
 	pose_frame = index
@@ -100,6 +130,7 @@ func _set_frame(index: int, direction: float, tint: Color) -> void:
 	art.offset = Vector2(-frames[index].region.size.x / 2.0, -BASELINE)
 	art.flip_h = direction < 0.0
 	art.scale = Vector2.ONE * POSE_SCALE
+	art.rotation = 0.0
 	art.modulate = tint
 	art.show()
 	show()
@@ -133,6 +164,7 @@ func show_locomotion(state: StringName, direction: float, tint: Color, vertical_
 		art.offset = Vector2(-locomotion_frames[index].region.size.x / 2.0, -baseline)
 		art.scale = Vector2.ONE * POSE_SCALE
 	art.flip_h = direction < 0.0
+	art.rotation = 0.0
 	art.modulate = tint
 	art.show()
 	show()

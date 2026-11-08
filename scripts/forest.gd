@@ -5,11 +5,11 @@ signal journey_complete
 signal ladder_unlocked
 signal essence_changed(amount: int)
 signal essence_discovered
+signal essence_collected
 
-const WORLD_WIDTH: float = 7200.0
+const WORLD_WIDTH: float = 9200.0
 const GROUND_Y: float = 586.0
 const START := Vector2(170.0, GROUND_Y)
-const GOAL_X: float = 7020.0
 const FOUNTAIN_X: float = 6670.0
 const SWORD_PICKUP = preload("res://scripts/sword_pickup.gd")
 const FOREST_ENEMY = preload("res://scripts/forest_enemy.gd")
@@ -21,9 +21,12 @@ const FLOATING_ISLAND = preload("res://assets/floating-amulet-island.png")
 const FOUNTAIN_TEXTURE = preload("res://assets/moss-fountain.png")
 const RESTING_ARMED = preload("res://assets/prince-resting.png")
 const RESTING_UNARMED = preload("res://assets/prince-resting-unarmed.png")
+const STEEL_RESTING_ARMED = preload("res://assets/prince-steel-resting.png")
+const STEEL_RESTING_UNARMED = preload("res://assets/prince-steel-resting-unarmed.png")
 const FOUNTAIN_WATER = preload("res://scripts/fountain_water.gd")
 const DISTANT_LEAVES = preload("res://scripts/distant_leaves.gd")
 const ESSENCE_DROP = preload("res://scripts/essence_drop.gd")
+const BOSS_ARENA = preload("res://scripts/boss_arena.gd")
 # Pixel bounds of the mossy walking surface, below the decorative foliage.
 # Map both the art and collision from the same source-image coordinates.
 const ISLAND_DECK := Rect2(70, 270, 1570, 70)
@@ -42,16 +45,28 @@ var platforms: Array[StaticBody2D] = []
 var upper_platforms: Array[StaticBody2D] = []
 var beyond_platforms: Array[StaticBody2D] = []
 var ladder: ForestLadder
+var boss_arena: Node2D
 var fountain: Node2D
 var fountain_prompt: Label
 var checkpoint_active := false
 var essence := 0
 var has_discovered_essence := false
+var has_steel_stance := false
+const STEEL_STANCE_PRICE := 200
 var essence_drops: Node2D
 var drop_generation := 0
 
 func _ready() -> void:
-	$Goal.body_entered.connect(_on_goal_entered)
+	# Extend the existing walkable forest into the sealed boss arena.
+	var floor_shape := RectangleShape2D.new()
+	floor_shape.size = Vector2(WORLD_WIDTH, 140)
+	$Floor/Collision.shape = floor_shape
+	$Floor.position.x = WORLD_WIDTH * 0.5
+	$RightBoundary.position.x = WORLD_WIDTH + 20.0
+	$Ground.region_rect.size.x = WORLD_WIDTH / $Ground.scale.x
+	camera.limit_right = int(WORLD_WIDTH)
+	$Goal.monitoring = false
+	$Goal.hide()
 	_build_platforms()
 	_build_amulet_island()
 	_build_ladder()
@@ -60,6 +75,11 @@ func _ready() -> void:
 	add_child(essence_drops)
 	_build_combat()
 	_build_fountain()
+	boss_arena = Node2D.new()
+	boss_arena.set_script(BOSS_ARENA)
+	boss_arena.player = player
+	add_child(boss_arena)
+	boss_arena.boss_defeated.connect(_on_boss_victory)
 	reset_journey()
 	_animate_atmosphere()
 
@@ -69,14 +89,17 @@ func _process(_delta: float) -> void:
 	camera.position.y = clampf(player.position.y + 150.0, 100.0, 360.0)
 	if fountain_prompt:
 		fountain_prompt.visible = player.is_resting or _near_fountain()
-		fountain_prompt.text = "PRESS ANY BUTTON TO STAND" if player.is_resting else "E / RB  REST"
+		fountain_prompt.text = "W / UP  MERCHANT     OTHER BUTTON  STAND" if player.is_resting else "E / RB  REST"
 	if not ladder.active and ladder_guardians.size() > 0 and ladder_guardians.all(func(bat: CharacterBody2D) -> bool: return bat.health <= 0):
 		ladder.unlock()
 		ladder_unlocked.emit()
 
 func reset_journey() -> void:
 	completed = false
+	if boss_arena:
+		boss_arena.reset_encounter()
 	checkpoint_active = false
+	has_steel_stance = false
 	has_discovered_essence = false
 	_set_essence(0)
 	player.reset_to(START)
@@ -104,6 +127,14 @@ func _set_essence(value: int) -> void:
 	essence = maxi(0, value)
 	essence_changed.emit(essence)
 
+func purchase_steel_stance() -> bool:
+	if not player.is_resting or has_steel_stance or (not player.god_mode and essence < STEEL_STANCE_PRICE):
+		return false
+	has_steel_stance = true
+	if not player.god_mode:
+		_set_essence(essence - STEEL_STANCE_PRICE)
+	return true
+
 func _on_enemy_defeated(at: Vector2, value: int) -> void:
 	# Spawn outside physics callbacks, and discard stale spawns after a reset.
 	_spawn_essence.call_deferred(at, value, drop_generation)
@@ -123,6 +154,8 @@ func _on_essence_collected(value: int) -> void:
 	if not has_discovered_essence:
 		has_discovered_essence = true
 		essence_discovered.emit()
+	else:
+		essence_collected.emit()
 
 func _near_fountain() -> bool:
 	return player.health > 0 and player.is_on_floor() and absf(player.position.x - FOUNTAIN_X) < 115.0 and absf(player.position.y - GROUND_Y) < 5.0
@@ -132,12 +165,14 @@ func try_rest() -> bool:
 		return false
 	checkpoint_active = true
 	_reset_enemies()
-	var rest_texture: Texture2D = RESTING_ARMED if player.has_sword else RESTING_UNARMED
+	var rest_texture: Texture2D = (STEEL_RESTING_ARMED if player.has_sword else STEEL_RESTING_UNARMED) if player.stance == &"steel" else (RESTING_ARMED if player.has_sword else RESTING_UNARMED)
 	player.begin_resting(Vector2(FOUNTAIN_X - 38.0, GROUND_Y), rest_texture)
 	return true
 
 func recover_at_fountain() -> void:
 	completed = false
+	if boss_arena:
+		boss_arena.reset_encounter()
 	_reset_enemies()
 	player.recover_at_checkpoint(Vector2(FOUNTAIN_X - 38.0, GROUND_Y))
 	camera.position = Vector2(minf(FOUNTAIN_X + 220.0, WORLD_WIDTH - 640.0), 360.0)
@@ -165,8 +200,8 @@ func _build_fountain() -> void:
 	water.set_script(FOUNTAIN_WATER)
 	fountain.add_child(water)
 	fountain_prompt = Label.new()
-	fountain_prompt.position = Vector2(-150, -float(bounds.size.y) * factor - 35)
-	fountain_prompt.size = Vector2(300, 24)
+	fountain_prompt.position = Vector2(-240, -float(bounds.size.y) * factor - 35)
+	fountain_prompt.size = Vector2(480, 24)
 	fountain_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	fountain_prompt.add_theme_font_size_override("font_size", 12)
 	fountain_prompt.add_theme_color_override("font_color", Color("d6ebd3"))
@@ -175,8 +210,8 @@ func _build_fountain() -> void:
 	fountain_prompt.hide()
 	fountain.add_child(fountain_prompt)
 
-func _on_goal_entered(body: Node2D) -> void:
-	if body == player and player.health > 0 and not completed:
+func _on_boss_victory() -> void:
+	if not completed:
 		completed = true
 		journey_complete.emit()
 
@@ -232,6 +267,7 @@ func _build_platforms() -> void:
 
 func _build_amulet_island() -> void:
 	amulet_island = StaticBody2D.new()
+	amulet_island.add_to_group("landing_grass")
 	amulet_island.name = "AmuletIsland"
 	amulet_island.position = Vector2(3170, -125)
 	amulet_island.collision_layer = 8
@@ -263,6 +299,7 @@ func _build_amulet_island() -> void:
 
 func _make_branch(at: Vector2, support_base_y: float = GROUND_Y, width: float = 150.0, distant_pillar: bool = false) -> StaticBody2D:
 	var branch := StaticBody2D.new()
+	branch.add_to_group("landing_wood")
 	branch.position = at
 	# Keep one-way platforms out of wall/sight rays used by ground enemies.
 	branch.collision_layer = 8

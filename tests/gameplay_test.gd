@@ -22,7 +22,7 @@ func _run() -> void:
 	await _screenshot("forest-start")
 
 	# Send actual key events so incorrect InputMap keycodes cannot pass unnoticed.
-	for binding in [[KEY_LEFT, -1.0, "Left arrow"], [KEY_RIGHT, 1.0, "Right arrow"], [KEY_A, -1.0, "A"], [KEY_D, 1.0, "D"]]:
+	for binding in [[KEY_A, -1.0, "A"], [KEY_D, 1.0, "D"]]:
 		game.restart_journey()
 		await _frames(3)
 		var start_x: float = prince.position.x
@@ -33,7 +33,7 @@ func _run() -> void:
 		_key_state(binding[0], false)
 		await _frames(12)
 		_check(is_zero_approx(prince.velocity.x), binding[2] + " release stops movement")
-	for unrelated_key in [KEY_UP, KEY_DOWN, KEY_PAGEUP, KEY_PAGEDOWN]:
+	for unrelated_key in [KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_PAGEUP, KEY_PAGEDOWN]:
 		_key_state(unrelated_key, true)
 		_check(is_zero_approx(Input.get_axis("move_left", "move_right")), OS.get_keycode_string(unrelated_key) + " does not trigger horizontal movement")
 		_key_state(unrelated_key, false)
@@ -189,7 +189,7 @@ func _run() -> void:
 	var saw_sword_reveal := false
 	for i in range(2350):
 		await _frames(1)
-		if game.mode == &"complete":
+		if prince.position.x >= game.forest.boss_arena.FOG_X - 45.0:
 			break
 		if game.mode == &"item_reveal":
 			saw_sword_reveal = true
@@ -210,12 +210,13 @@ func _run() -> void:
 			await _screenshot("forest-journey")
 	Input.action_release("move_right")
 	Input.action_release("jump")
-	if game.mode != &"complete":
+	if prince.position.x < game.forest.boss_arena.FOG_X - 90.0:
 		print("TRAVERSAL DIAGNOSTICS: mode=%s position=%s velocity=%s obstacle=%s cleared=%s" % [game.mode, prince.position, prince.velocity, next_obstacle, cleared])
 	_check(saw_sword_reveal, "Collecting the sword pauses traversal for its item reveal")
 	_check(cleared.all(func(value: bool) -> bool: return value), "Prince clears the original and extended forest obstacles using normal jumps")
-	_check(game.mode == &"complete" and paused, "Reaching the far exit completes and pauses the game")
-	_check(game.heading.text == "Forest path complete", "Completion presents the ending")
+	_check(game.mode == &"playing" and not paused and game.forest.boss_arena.can_enter(), "Reaching the far exit reveals the boss fog")
+	game.complete_journey()
+	_check(game.heading.text == "Shakchunni defeated", "Completion presents the boss ending")
 	_check(game.forest.camera.position.x > 5900.0, "Camera follows the extended route")
 	await _screenshot("forest-complete")
 	game.primary.pressed.emit()
