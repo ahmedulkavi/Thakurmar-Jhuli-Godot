@@ -8,7 +8,13 @@ const MUTED := Color("93b3a2")
 const INTERFACE_SIZE := Vector2(1360, 940)
 const SWORD_REVEAL_VISUAL = preload("res://scripts/sword_visual.gd")
 const ESSENCE_COIN = preload("res://scenes/essence_coin.tres")
+const ROYAL_STANCE_ICON = preload("res://assets/royal-stance.png")
+const STEEL_STANCE_ICON = preload("res://assets/steel-stance.png")
 const AMULET_TEXTURE = preload("res://assets/healing-amulet.png")
+const FOREST_MUSIC = preload("res://assets/forest-music.ogg")
+const BOSS_MUSIC = preload("res://assets/shakchunni-music-louder.ogg")
+const FOREST_MUSIC_ENABLED := true
+const SOUND_EFFECTS = preload("res://scripts/sound_effects.gd")
 
 @onready var interface: Control = $Interface
 @onready var forest: ForestLevel = $Interface/GameFrame/ViewportContainer/World/Forest
@@ -17,6 +23,8 @@ const AMULET_TEXTURE = preload("res://assets/healing-amulet.png")
 @onready var world: SubViewport = $Interface/GameFrame/ViewportContainer/World
 var mode: StringName = &"playing"
 var overlay: Control
+var victory_screen: Control
+var victory_tween: Tween
 var kicker: Label
 var heading: Label
 var copy: Label
@@ -30,7 +38,13 @@ var combat_panel: Panel
 var health_bar: ProgressBar
 var stamina_bar: ProgressBar
 var magic_bar: ProgressBar
+var boss_panel: Control
+var boss_health: ProgressBar
+var boss_phase: Label
 var essence_count: Label
+var god_mode_indicator: Label
+var stance_icon: TextureRect
+var stance_tween: Tween
 var amulet_reveal: Control
 var reveal_shade: ColorRect
 var reveal_halo: Panel
@@ -40,9 +54,22 @@ var reveal_title: Label
 var reveal_copy: Label
 var reveal_sparks: Array[Label] = []
 var reveal_tween: Tween
+var merchant: Control
+var merchant_buy: Button
+var merchant_status: Label
+var merchant_close: Button
 var windowed_mode: Window.Mode = Window.MODE_MAXIMIZED
+var music_player: AudioStreamPlayer
+var boss_music_player: AudioStreamPlayer
+var boss_music_active := false
+var music_tween: Tween
+var sound_effects: Node
 
 func _ready() -> void:
+	_start_music()
+	sound_effects = SOUND_EFFECTS.new()
+	sound_effects.name = "SoundEffects"
+	add_child(sound_effects)
 	serif = SystemFont.new()
 	serif.font_names = PackedStringArray(["Georgia", "Noto Serif", "DejaVu Serif"])
 	italic = SystemFont.new()
@@ -56,16 +83,27 @@ func _ready() -> void:
 	theme = ui_theme
 	_build_chrome()
 	_build_overlay()
+	_build_victory_screen()
 	_build_amulet_reveal()
+	_build_merchant()
+	_build_boss_hud()
 	forest.journey_complete.connect(complete_journey)
 	forest.player.health_changed.connect(_update_health)
 	forest.player.stamina_changed.connect(_update_stamina)
 	forest.player.magic_changed.connect(_update_magic)
+	forest.player.stance_changed.connect(_update_stance)
+	forest.player.sound_requested.connect(_play_sound)
 	forest.player.sword_equipped.connect(_on_sword_equipped)
 	forest.player.amulet_equipped.connect(_on_amulet_equipped)
 	forest.player.died.connect(_on_player_died)
+	forest.boss_arena.encounter_started.connect(_on_boss_started)
+	forest.boss_arena.encounter_reset.connect(_on_boss_reset)
+	forest.boss_arena.boss.health_changed.connect(_update_boss_health)
+	forest.boss_arena.boss.phase_changed.connect(_update_boss_phase)
+	forest.boss_arena.boss.defeated.connect(_on_boss_music_end)
 	forest.essence_changed.connect(_update_essence)
 	forest.essence_discovered.connect(_on_essence_discovered)
+	forest.essence_collected.connect(_on_essence_collected)
 	_update_health(forest.player.health, ForestPrince.MAX_HEALTH)
 	_update_stamina(forest.player.stamina, ForestPrince.MAX_STAMINA)
 	_update_magic(forest.player.magic, ForestPrince.MAX_MAGIC)
@@ -74,6 +112,49 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_queue_display_resize)
 	resized.connect(_queue_display_resize)
 	_resize_display()
+
+func _play_sound(cue: StringName) -> void:
+	sound_effects.call("play_cue", cue)
+
+func _start_music() -> void:
+	music_player = AudioStreamPlayer.new()
+	music_player.name = "ForestMusic"
+	music_player.process_mode = Node.PROCESS_MODE_ALWAYS
+	var track := FOREST_MUSIC.duplicate() as AudioStreamOggVorbis
+	track.loop = true
+	music_player.stream = track
+	music_player.volume_db = -10.0
+	add_child(music_player)
+	boss_music_player = AudioStreamPlayer.new()
+	boss_music_player.name = "ShakchunniMusic"
+	boss_music_player.process_mode = Node.PROCESS_MODE_ALWAYS
+	var boss_track := BOSS_MUSIC.duplicate() as AudioStreamOggVorbis
+	boss_track.loop = true
+	boss_music_player.stream = boss_track
+	boss_music_player.volume_db = -45.0
+	add_child(boss_music_player)
+	if FOREST_MUSIC_ENABLED:
+		music_player.play()
+
+func _set_boss_music(enabled: bool) -> void:
+	if not FOREST_MUSIC_ENABLED or boss_music_active == enabled:
+		return
+	boss_music_active = enabled
+	if music_tween and music_tween.is_valid():
+		music_tween.kill()
+	var incoming := boss_music_player if enabled else music_player
+	var outgoing := music_player if enabled else boss_music_player
+	if not incoming.playing:
+		incoming.volume_db = -45.0
+		incoming.play()
+	music_tween = create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	music_tween.set_parallel(true)
+	music_tween.tween_property(incoming, "volume_db", -10.0 if not enabled else -8.0, 1.0)
+	music_tween.tween_property(outgoing, "volume_db", -45.0, 1.0)
+	music_tween.chain().tween_callback(outgoing.stop)
+
+func _on_boss_music_end() -> void:
+	_set_boss_music(false)
 
 func _queue_display_resize() -> void:
 	_resize_display.call_deferred()
@@ -97,6 +178,33 @@ func toggle_fullscreen() -> void:
 		window.mode = Window.MODE_FULLSCREEN
 
 func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("god_mode") and not event.is_echo():
+		forest.player.god_mode = not forest.player.god_mode
+		god_mode_indicator.visible = forest.player.god_mode
+		_update_essence(forest.essence)
+		if mode == &"merchant":
+			_refresh_merchant()
+			if merchant_buy.disabled:
+				merchant_close.grab_focus()
+		get_viewport().set_input_as_handled()
+		return
+	if mode == &"merchant":
+		if event.is_action_pressed("pause") and not event.is_echo():
+			_close_merchant()
+			get_viewport().set_input_as_handled()
+		elif (event.is_action_pressed("move_up") or event.is_action_pressed("move_down")) and not event.is_echo():
+			if not merchant_buy.disabled and merchant_close.has_focus():
+				merchant_buy.grab_focus()
+			else:
+				merchant_close.grab_focus()
+			get_viewport().set_input_as_handled()
+		elif event is InputEventJoypadButton and event.pressed and event.button_index in [JOY_BUTTON_A, JOY_BUTTON_X]:
+			if merchant_buy.has_focus() and not merchant_buy.disabled:
+				_buy_steel_stance()
+			elif merchant_close.has_focus():
+				_close_merchant()
+			get_viewport().set_input_as_handled()
+		return
 	if mode == &"item_reveal":
 		if (event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton or event is InputEventScreenTouch) and event.is_pressed() and not event.is_echo():
 			get_viewport().set_input_as_handled()
@@ -106,13 +214,27 @@ func _input(event: InputEvent) -> void:
 			_finish_item_reveal()
 		return
 	if mode == &"playing" and forest.player.is_resting:
+		if event.is_action_pressed("move_up") and not event.is_echo():
+			_open_merchant()
+			get_viewport().set_input_as_handled()
+			return
 		if (event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton or event is InputEventScreenTouch) and event.is_pressed() and not event.is_echo():
 			get_viewport().set_input_as_handled()
 			_release_actions()
 			forest.player.stop_resting()
 		return
+	if mode == &"playing" and not forest.player.is_resting and not event.is_echo():
+		if event.is_action_pressed("stance_royal"):
+			forest.player.set_stance(&"royal")
+			get_viewport().set_input_as_handled()
+			return
+		if event.is_action_pressed("stance_steel"):
+			if forest.has_steel_stance:
+				forest.player.set_stance(&"steel")
+			get_viewport().set_input_as_handled()
+			return
 	if mode == &"playing" and event.is_action_pressed("interact") and not event.is_echo():
-		if forest.try_rest():
+		if forest.try_rest() or forest.boss_arena.traverse():
 			get_viewport().set_input_as_handled()
 			_release_actions()
 		return
@@ -142,12 +264,14 @@ func pause_journey() -> void:
 
 func complete_journey() -> void:
 	mode = &"complete"
-	kicker.text = "A   M O M E N T   O F   P E A C E"
-	heading.text = "Forest path complete"
-	copy.text = "You found your way to the light."
-	primary.text = "WALK AGAIN     →"
-	hint.text = "Press R to restart"
-	_show_overlay()
+	get_tree().paused = true
+	pause_button.disabled = true
+	_release_actions()
+	victory_screen.modulate.a = 0.0
+	victory_screen.show()
+	victory_tween = create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	victory_tween.tween_property(victory_screen, "modulate:a", 1.0, 0.8)
+	victory_screen.get_node("Restart").grab_focus()
 
 func _on_player_died() -> void:
 	mode = &"defeated"
@@ -172,18 +296,34 @@ func _update_magic(current: float, maximum: float) -> void:
 	magic_bar.value = current
 	magic_bar.visible = forest.player.has_amulet
 	combat_panel.size.y = 58.0 if forest.player.has_amulet else 41.0
+	stance_icon.position.y = combat_panel.position.y + combat_panel.size.y + 5.0
+
+func _update_stance(stance: StringName) -> void:
+	stance_icon.texture = STEEL_STANCE_ICON if stance == &"steel" else ROYAL_STANCE_ICON
+	stance_icon.tooltip_text = "Steel Stance" if stance == &"steel" else "Royal Stance"
+	if stance_tween and stance_tween.is_valid():
+		stance_tween.kill()
+	stance_icon.modulate = Color(1.7, 1.9, 2.0) if stance == &"steel" else Color(2.0, 1.65, 0.7)
+	stance_tween = create_tween()
+	stance_tween.tween_property(stance_icon, "modulate", Color.WHITE, 0.6)
 
 func _update_essence(amount: int) -> void:
-	essence_count.text = str(amount)
+	essence_count.text = "?" if forest.player.god_mode else str(amount)
 
 func _on_essence_discovered() -> void:
+	_play_sound(&"item")
 	_show_item_reveal(&"essence")
 
+func _on_essence_collected() -> void:
+	_play_sound(&"essence")
+
 func _on_amulet_equipped() -> void:
+	_play_sound(&"item")
 	_update_magic(forest.player.magic, ForestPrince.MAX_MAGIC)
 	_show_item_reveal(&"amulet")
 
 func _on_sword_equipped() -> void:
+	_play_sound(&"item")
 	_show_item_reveal(&"sword")
 
 func _show_overlay() -> void:
@@ -208,6 +348,10 @@ func restart_journey() -> void:
 		reveal_tween.kill()
 	amulet_reveal.hide()
 	amulet_reveal.modulate = Color.WHITE
+	merchant.hide()
+	if victory_tween and victory_tween.is_valid():
+		victory_tween.kill()
+	victory_screen.hide()
 	mode = &"playing"
 	overlay.hide()
 	primary.release_focus()
@@ -222,6 +366,141 @@ func restart_journey() -> void:
 func _release_actions() -> void:
 	for action in [&"move_left", &"move_right", &"move_up", &"move_down", &"jump", &"attack", &"heal", &"interact"]:
 		Input.action_release(action)
+
+func _build_boss_hud() -> void:
+	boss_panel = Control.new()
+	boss_panel.name = "BossHealth"
+	boss_panel.position = Vector2(190, 610)
+	boss_panel.size = Vector2(900, 80)
+	boss_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(boss_panel)
+	var title := _label(boss_panel, "SHAKCHUNNI, REAPER OF FOREST", Vector2(0, 0), 23, Color("e4d4c7"), serif)
+	title.size = Vector2(900, 32)
+	title.add_theme_constant_override("outline_size", 5)
+	title.add_theme_color_override("font_outline_color", Color("120e1b"))
+	boss_health = ProgressBar.new()
+	boss_health.name = "HealthBar"
+	boss_health.position = Vector2(0, 38)
+	boss_health.size = Vector2(900, 18)
+	boss_health.max_value = 32
+	boss_health.value = 32
+	boss_health.show_percentage = false
+	boss_health.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	boss_health.add_theme_stylebox_override("background", _box(Color("1d1b25"), Color("907e85"), 3))
+	boss_health.add_theme_stylebox_override("fill", _box(Color("ad394e"), Color.TRANSPARENT, 3))
+	boss_panel.add_child(boss_health)
+	boss_phase = _label(boss_panel, "", Vector2(0, 70), 13, Color("d5a7d9"), italic)
+	boss_phase.size.x = 900
+	boss_panel.hide()
+
+func _on_boss_started() -> void:
+	_set_boss_music(true)
+	boss_panel.show()
+	_update_boss_health(forest.boss_arena.boss.health, forest.boss_arena.boss.MAX_HEALTH)
+
+func _on_boss_reset() -> void:
+	_set_boss_music(false)
+	boss_panel.hide()
+	boss_phase.text = ""
+
+func _update_boss_health(current: int, maximum: int) -> void:
+	boss_health.max_value = maximum
+	boss_health.value = current
+
+func _update_boss_phase(phase: StringName) -> void:
+	if phase == &"laugh":
+		boss_phase.text = "Her laughter makes her untouchable..."
+	elif forest.boss_arena.boss.frenzy_left > 0.0 and phase != &"dead":
+		boss_phase.text = "FRENZIED"
+	else:
+		boss_phase.text = ""
+
+func _build_merchant() -> void:
+	merchant = Control.new()
+	merchant.name = "Merchant"
+	merchant.size = Vector2(1280, 720)
+	merchant.z_index = 25
+	merchant.mouse_filter = Control.MOUSE_FILTER_STOP
+	frame.add_child(merchant)
+	var shade := ColorRect.new()
+	shade.size = merchant.size
+	shade.color = Color(0.015, 0.055, 0.05, 0.82)
+	merchant.add_child(shade)
+	var panel := Panel.new()
+	panel.name = "Panel"
+	panel.position = Vector2(330, 105)
+	panel.size = Vector2(620, 510)
+	panel.add_theme_stylebox_override("panel", _box(Color("102b2b"), Color("928661"), 5))
+	merchant.add_child(panel)
+	var title := _label(panel, "The Fountain Merchant", Vector2(40, 25), 30, PAPER, serif)
+	title.size.x = 540
+	var subtitle := _label(panel, "A quiet exchange for a wandering prince", Vector2(40, 70), 15, MUTED, italic)
+	subtitle.size.x = 540
+	var art := TextureRect.new()
+	art.name = "SteelStanceIcon"
+	art.texture = load("res://assets/steel-stance.png")
+	art.position = Vector2(70, 155)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	panel.add_child(art)
+	art.size = Vector2(112, 112)
+	_label(panel, "Steel Stance", Vector2(255, 130), 25, GOLD, serif)
+	_label(panel, "A defensive stance for the prince.", Vector2(255, 174), 15, PAPER)
+	_label(panel, "Defend and counter incoming attacks", Vector2(255, 205), 14, MUTED, italic)
+	_label(panel, "200 ESSENCE", Vector2(255, 260), 17, Color("b6e2ed"))
+	merchant_status = _label(panel, "", Vector2(40, 325), 15, MUTED)
+	merchant_status.size.x = 540
+	merchant_buy = _button("BUY STEEL STANCE?   200 ESSENCE", Vector2(40, 360), Vector2(540, 50), true)
+	merchant_buy.pressed.connect(_buy_steel_stance)
+	panel.add_child(merchant_buy)
+	merchant_close = _button("LEAVE MERCHANT", Vector2(40, 425), Vector2(540, 44))
+	merchant_close.pressed.connect(_close_merchant)
+	panel.add_child(merchant_close)
+	merchant.hide()
+
+func _open_merchant() -> void:
+	if mode != &"playing" or not forest.player.is_resting:
+		return
+	mode = &"merchant"
+	get_tree().paused = true
+	pause_button.disabled = true
+	_release_actions()
+	_refresh_merchant()
+	merchant.show()
+	if merchant_buy.disabled:
+		merchant_close.grab_focus()
+	else:
+		merchant_buy.grab_focus()
+
+func _refresh_merchant() -> void:
+	merchant_buy.disabled = forest.has_steel_stance or (not forest.player.god_mode and forest.essence < forest.STEEL_STANCE_PRICE)
+	if forest.has_steel_stance:
+		merchant_status.text = "Purchased. Use Right Arrow / D-pad Right to equip."
+		merchant_buy.text = "PURCHASED"
+	elif not forest.player.god_mode and forest.essence < forest.STEEL_STANCE_PRICE:
+		merchant_status.text = "You have %d Essence ? 200 required" % forest.essence
+		merchant_buy.text = "NOT ENOUGH ESSENCE"
+	else:
+		merchant_status.text = "Unlimited Essence (God Mode)" if forest.player.god_mode else "You have %d Essence" % forest.essence
+		merchant_buy.text = "BUY STEEL STANCE?   200 ESSENCE"
+
+func _buy_steel_stance() -> void:
+	if forest.purchase_steel_stance():
+		_play_sound(&"item")
+		_refresh_merchant()
+		merchant_close.grab_focus()
+
+func _close_merchant() -> void:
+	if mode != &"merchant":
+		return
+	merchant.hide()
+	merchant_buy.release_focus()
+	merchant_close.release_focus()
+	mode = &"playing"
+	pause_button.disabled = false
+	_release_actions()
+	get_tree().paused = false
 
 func _build_chrome() -> void:
 	_label(interface, "A  L I T T L E  J O U R N E Y  T H R O U G H  T H E  W O O D S", Vector2(40, 28), 11, MUTED)
@@ -250,12 +529,16 @@ func _build_chrome() -> void:
 	pause_button.tooltip_text = "Pause the journey (Esc / controller Start)"
 	pause_button.pressed.connect(pause_journey)
 	frame.add_child(pause_button)
+	god_mode_indicator = _label(frame, "GOD MODE", Vector2(270, 32), 14, GOLD)
+	god_mode_indicator.add_theme_constant_override("outline_size", 4)
+	god_mode_indicator.add_theme_color_override("font_outline_color", Color("102526"))
+	god_mode_indicator.hide()
 	_build_combat_hud()
 	_build_essence_hud()
 	var x: float = 40
-	for group in [["←", "→", "or", "A", "D", "MOVE"], ["SPACE", "JUMP"], ["J / X", "ATTACK"], ["H", "HEAL"], ["ESC", "PAUSE"], ["R", "RESTART"]]:
+	for group in [["A", "D", "MOVE"], ["←", "→", "STANCE"], ["SPACE", "JUMP"], ["J / X", "ATTACK"], ["H", "HEAL"], ["ESC", "PAUSE"], ["R", "RESTART"]]:
 		for token: String in group:
-			if token in ["MOVE", "JUMP", "ATTACK", "HEAL", "PAUSE", "RESTART"]:
+			if token in ["MOVE", "STANCE", "JUMP", "ATTACK", "HEAL", "PAUSE", "RESTART"]:
 				var name_label := _label(interface, token, Vector2(x + 3, 877), 10, MUTED)
 				x += name_label.get_minimum_size().x + 33
 			elif token == "or":
@@ -312,6 +595,17 @@ func _build_combat_hud() -> void:
 	stamina_bar = _resource_bar(combat_panel, Vector2(8, 24), Color("79c977"))
 	magic_bar = _resource_bar(combat_panel, Vector2(8, 41), Color("4fa7e8"))
 	magic_bar.hide()
+	stance_icon = TextureRect.new()
+	stance_icon.name = "StanceIcon"
+	stance_icon.texture = ROYAL_STANCE_ICON
+	stance_icon.tooltip_text = "Royal Stance"
+	stance_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	stance_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	stance_icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	stance_icon.position = Vector2(28, 133)
+	stance_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(stance_icon)
+	stance_icon.size = Vector2(30, 30)
 
 func _resource_bar(parent: Control, at: Vector2, fill: Color) -> ProgressBar:
 	var bar := ProgressBar.new()
@@ -444,6 +738,46 @@ func _finish_item_reveal() -> void:
 		mode = &"playing"
 		pause_button.disabled = false
 		get_tree().paused = false
+
+func _build_victory_screen() -> void:
+	victory_screen = Control.new()
+	victory_screen.name = "VictoryScreen"
+	victory_screen.size = Vector2(1280, 720)
+	victory_screen.z_index = 40
+	frame.add_child(victory_screen)
+	var grayscale := ColorRect.new()
+	grayscale.name = "Grayscale"
+	grayscale.size = victory_screen.size
+	var shader := Shader.new()
+	shader.code = """shader_type canvas_item;
+uniform sampler2D screen_texture : hint_screen_texture, filter_linear;
+void fragment() {
+	vec3 scene = texture(screen_texture, SCREEN_UV).rgb;
+	float gray = dot(scene, vec3(0.299, 0.587, 0.114));
+	COLOR = vec4(vec3(gray * 0.42), 1.0);
+}"""
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	grayscale.material = material
+	victory_screen.add_child(grayscale)
+	var script_font := SystemFont.new()
+	script_font.font_names = PackedStringArray(["Segoe Script", "Lucida Handwriting", "Brush Script MT", "cursive"])
+	script_font.font_italic = true
+	var title := _label(victory_screen, "The Prince Prevails", Vector2(80, 260), 70, Color("e8c979"), script_font)
+	title.name = "Title"
+	title.size = Vector2(1120, 120)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.add_theme_constant_override("outline_size", 3)
+	title.add_theme_color_override("font_outline_color", Color("483817"))
+	var restart := _button("WALK AGAIN", Vector2(515, 465), Vector2(250, 48))
+	restart.name = "Restart"
+	restart.pressed.connect(restart_journey)
+	victory_screen.add_child(restart)
+	var restart_hint := _label(victory_screen, "Press R to restart", Vector2(440, 525), 14, Color("d1c6a4"), italic)
+	restart_hint.size.x = 400
+	restart_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	victory_screen.hide()
 
 func _build_overlay() -> void:
 	overlay = Control.new()
