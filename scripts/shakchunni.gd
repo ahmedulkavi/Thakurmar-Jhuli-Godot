@@ -12,8 +12,13 @@ const ARM_TEXTURE = preload("res://assets/shakchunni-arm.png")
 const IDLE_SHEET = preload("res://assets/shakchunni-idle-sheet.png")
 const LAUGH_SHEET = preload("res://assets/shakchunni-laugh-sheet.png")
 const ARM_REGION := Rect2(18, 129, 2132, 435)
+const MOTION_SHADER = preload("res://assets/shakchunni_motion.gdshader")
+const HAND_SCALE := 0.135
+const WRIST_X := 1240.0
+const PALM_X := 1730.0
 const LAUGH_TIME := 2.1
 const FRENZY_TIME := 8.0
+const BLOCK_STUN_TIME := 0.45
 const HOVER_MIN_X := 8280.0
 const HOVER_MAX_X := 8700.0
 const HOVER_HEIGHT := 586.0
@@ -41,6 +46,16 @@ var idle_frames: Array[AtlasTexture] = []
 var laugh_frames: Array[AtlasTexture] = []
 var pose_frame := 0
 var death_tween: Tween
+var phase_duration := 1.0
+var reach_start := Vector2.ZERO
+var recovery_start := Vector2.ZERO
+var body_lean := 0.0
+var body_shift := Vector2.ZERO
+var arm_canvas: Node2D
+var arm_mesh := ArrayMesh.new()
+var motion_material: ShaderMaterial
+var death_arm := false
+var death_hand_local := Vector2.ZERO
 
 func _ready() -> void:
 	home_position = position
@@ -58,6 +73,9 @@ func _ready() -> void:
 	laugh_frames = _make_frames(LAUGH_SHEET)
 	art = Sprite2D.new()
 	art.name = "ShakchunniArt"
+	motion_material = ShaderMaterial.new()
+	motion_material.shader = MOTION_SHADER
+	art.material = motion_material
 	art.texture = idle_frames[0]
 	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	art.position = Vector2(0, -270)
@@ -67,6 +85,10 @@ func _ready() -> void:
 	previous_art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	add_child(previous_art)
 	previous_art.hide()
+	arm_canvas = Node2D.new()
+	arm_canvas.name = "ArticulatedArm"
+	add_child(arm_canvas)
+	arm_canvas.draw.connect(_draw_arm)
 	voice = AudioStreamPlayer.new()
 	voice.name = "Laugh"
 	voice.stream = _make_laugh()
@@ -88,38 +110,76 @@ func _make_frames(sheet: Texture2D) -> Array[AtlasTexture]:
 	return result
 
 func _update_pose() -> void:
-	if not art:
+	if not art or state == &"dead":
 		return
+	var frame_position := 0.0
+	var frames := idle_frames
 	if state == &"windup" or reaching:
 		art.texture = ATTACK_TEXTURE
 		pose_frame = 0
-	elif state == &"laugh":
-		pose_frame = clampi(int((LAUGH_TIME - time_left) / LAUGH_TIME * laugh_frames.size()), 0, laugh_frames.size() - 1)
-		art.texture = laugh_frames[pose_frame]
-	elif active:
-		var step := int(clock * 5.0) % 14
-		pose_frame = step if step < idle_frames.size() else 14 - step
-		art.texture = idle_frames[pose_frame]
 	else:
-		pose_frame = 0
-		art.texture = idle_frames[0]
+		if state == &"laugh":
+			frames = laugh_frames
+			frame_position = clampf((LAUGH_TIME - time_left) / LAUGH_TIME, 0.0, 1.0) * 7.0
+		elif active:
+			# The painted sheet already contains the return to rest: loop it once.
+			frame_position = fmod(clock * 3.2, 8.0)
+		pose_frame = int(frame_position)
+		art.texture = frames[pose_frame]
+	var rect := Vector4(0, 0, 1, 1)
+	var next_rect := rect
+	if art.texture is AtlasTexture:
+		var atlas := art.texture as AtlasTexture
+		var size := Vector2(atlas.atlas.get_size())
+		var r := atlas.region
+		rect = Vector4(r.position.x / size.x, r.position.y / size.y, r.size.x / size.x, r.size.y / size.y)
+		r = frames[(pose_frame + 1) % frames.size()].region
+		next_rect = Vector4(r.position.x / size.x, r.position.y / size.y, r.size.x / size.x, r.size.y / size.y)
+	motion_material.set_shader_parameter("frame_rect", rect)
+	motion_material.set_shader_parameter("next_rect", next_rect)
+	motion_material.set_shader_parameter("frame_mix", smoothstep(0.0, 1.0, fmod(frame_position, 1.0)))
+	motion_material.set_shader_parameter("motion_time", clock)
+	var laugh_pulse := sin((LAUGH_TIME - time_left) * 22.0) * sin(PI * clampf(1.0 - time_left / LAUGH_TIME, 0.0, 1.0)) if state == &"laugh" else 0.0
+	motion_material.set_shader_parameter("laugh", laugh_pulse)
+	motion_material.set_shader_parameter("recoil", body_lean * 8.0)
 	var base := (620.0 if art.texture == ATTACK_TEXTURE else 560.0) / art.texture.get_height()
 	var breath := sin(clock * 1.7)
-	var tremble := sin((LAUGH_TIME - time_left) * 15.0) if state == &"laugh" else 0.0
-	var lunge := 0.03 if state == &"strike" else (0.015 if state == &"windup" else 0.0)
-	art.scale = Vector2(base * (1.0 - breath * 0.008), base * (1.0 + breath * 0.008 + tremble * 0.012))
-	art.rotation = -lunge + sin(clock * 1.1) * 0.012 + tremble * 0.012
+	art.scale = Vector2(base * (1.0 - breath * 0.003), base * (1.0 + breath * 0.004 + laugh_pulse * 0.004))
+	art.rotation = body_lean + sin(clock * 1.1) * 0.008 + laugh_pulse * 0.006
 	var attack_offset := Vector2(-20, 25) if art.texture == ATTACK_TEXTURE else Vector2.ZERO
-	art.position = Vector2(tremble * 2.0, -270.0 + sin(clock * 1.5) * 7.0) + attack_offset
+	art.position = Vector2(0, -270.0 + sin(clock * 1.5) * 4.0 + laugh_pulse * 1.5) + attack_offset + body_shift
 	if pose_blend > 0.0:
 		var previous_offset := Vector2(-20, 25) if previous_art.texture == ATTACK_TEXTURE else Vector2.ZERO
 		previous_art.position = art.position - attack_offset + previous_offset
 		previous_art.rotation = art.rotation
 		previous_art.scale = Vector2.ONE * ((620.0 if previous_art.texture == ATTACK_TEXTURE else 560.0) / previous_art.texture.get_height())
-		previous_art.modulate = Color(1, 1, 1, pose_blend / 0.18)
+		var blend := smoothstep(0.0, 1.0, pose_blend / 0.18)
+		previous_art.modulate = Color(1, 1, 1, blend)
+		art.self_modulate.a = 1.0 - blend
 		previous_art.show()
 	else:
 		previous_art.hide()
+		art.self_modulate.a = 1.0
+
+func _update_body(delta: float) -> void:
+	var progress := _phase_progress()
+	var lean := -hover_velocity * 0.0003
+	var shift := Vector2.ZERO
+	if state == &"windup":
+		lean += 0.035 * sin(progress * PI * 0.5)
+		shift = Vector2(10, 3) * smoothstep(0.0, 1.0, progress)
+	elif state == &"strike":
+		lean -= 0.075 * sin(progress * PI)
+		shift = Vector2(-18, 5) * sin(progress * PI)
+	elif state == &"recover" and reaching:
+		lean += 0.025 * sin(progress * PI)
+	if hit_flash > 0.0:
+		lean += 0.055 * sin(hit_flash / 0.15 * PI)
+	body_lean = lerpf(body_lean, lean, 1.0 - exp(-delta * 14.0))
+	body_shift = body_shift.lerp(shift, 1.0 - exp(-delta * 12.0))
+
+func _phase_progress() -> float:
+	return clampf(1.0 - time_left / maxf(phase_duration, 0.001), 0.0, 1.0)
 
 func begin() -> void:
 	if health <= 0:
@@ -132,10 +192,13 @@ func reset_boss() -> void:
 	if death_tween and death_tween.is_valid():
 		death_tween.kill()
 	active = false
+	death_arm = false
 	health = MAX_HEALTH
 	position = home_position
 	hover_velocity = 0.0
 	clock = 0.0
+	body_lean = 0.0
+	body_shift = Vector2.ZERO
 	pose_blend = 0.0
 	attack_count = 0
 	frenzy_left = 0.0
@@ -154,12 +217,19 @@ func _reset_visual() -> void:
 
 func _set_state(next: StringName, duration: float) -> void:
 	var previous := state
+	var was_reaching := reaching
+	var old_hand := to_global(_arm_endpoint()) if art else global_position
+	if next == &"strike":
+		reach_start = old_hand
+	elif next == &"recover":
+		recovery_start = old_hand
 	if art and _pose_family(previous) != _pose_family(next):
 		previous_art.texture = art.texture
 		pose_blend = 0.18
 	state = next
 	time_left = duration
-	reaching = next == &"strike" or (next == &"recover" and previous == &"strike")
+	phase_duration = duration
+	reaching = next == &"strike" or (next == &"recover" and (previous == &"strike" or was_reaching))
 	if next == &"strike":
 		strike_duration = duration
 	_update_pose()
@@ -188,6 +258,7 @@ func _physics_process(delta: float) -> void:
 	if state != &"laugh":
 		frenzy_left = maxf(0.0, frenzy_left - delta)
 	time_left -= delta
+	_update_body(delta)
 	_update_pose()
 	art.modulate = Color(1.5, 1.2, 1.35) if hit_flash > 0 else (Color(1.2, 0.8, 1.3) if state == &"laugh" else Color.WHITE)
 	if state == &"strike" and not arm_hit and player.health > 0:
@@ -217,6 +288,18 @@ func _physics_process(delta: float) -> void:
 				_set_state(&"recover", 0.2)
 	queue_redraw()
 
+func can_counter_from(prince_position: Vector2) -> bool:
+	# Compare the prince's sword reach with the boss's upper-body hurtbox.
+	var offset := (prince_position + Vector2(0, -62)) - (global_position + Vector2(0, -325))
+	return absf(offset.x) <= 241.0 and absf(offset.y) <= 161.0
+
+func stun_from_block() -> void:
+	if not active or health <= 0:
+		return
+	_set_state(&"recover", BLOCK_STUN_TIME)
+	arm_hit = true
+	queue_redraw()
+
 func take_damage(amount: int, _source: Vector2) -> void:
 	if not active or state == &"laugh" or health <= 0 or amount <= 0 or get_tree().paused:
 		return
@@ -226,10 +309,13 @@ func take_damage(amount: int, _source: Vector2) -> void:
 	hit_flash = 0.15
 	health_changed.emit(health, MAX_HEALTH)
 	if health == 0:
+		death_arm = reaching or state == &"windup"
+		death_hand_local = art.transform.affine_inverse() * _arm_endpoint()
 		active = false
 		voice.stop()
 		_set_state(&"dead", 0.0)
 		previous_art.hide()
+		art.self_modulate.a = 1.0
 		# Recoil, collapse, and dissolve before the victory screen appears.
 		death_tween = create_tween()
 		death_tween.tween_property(art, "rotation", -0.20, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
@@ -240,56 +326,105 @@ func take_damage(amount: int, _source: Vector2) -> void:
 		defeated.emit()
 	queue_redraw()
 
+func _process(_delta: float) -> void:
+	if state == &"dead" and art.modulate.a > 0.0:
+		queue_redraw()
+
 func _draw() -> void:
+	if arm_canvas:
+		arm_canvas.queue_redraw()
 	if not active:
 		return
-	var shoulder := Vector2(-66, -435)
 	var target := to_local(arm_target)
 	if state == &"windup":
 		var pulse := 0.45 + 0.25 * sin(clock * 18.0)
 		draw_arc(target, 45.0, 0.0, TAU, 32, Color(0.9, 0.3, 0.6, pulse), 3.0, true)
-	if state == &"windup" or reaching:
-		_draw_reaching_arm(shoulder, _arm_endpoint())
 	elif state == &"laugh":
 		draw_arc(Vector2(0, -345), 80.0 + 10.0 * sin(clock * 8), 0, TAU, 40, Color(0.83, 0.5, 0.88, 0.55), 4.0, true)
 
+func _draw_arm() -> void:
+	if state == &"dead" and death_arm:
+		_draw_reaching_arm(_shoulder_position(), art.transform * death_hand_local)
+	elif active and (state == &"windup" or reaching):
+		_draw_reaching_arm(_shoulder_position(), _arm_endpoint())
+
+func _shoulder_position() -> Vector2:
+	# Socket is inside the painted sleeve, in attack-texture coordinates.
+	if art.texture == ATTACK_TEXTURE:
+		return art.transform * Vector2(-107, -389)
+	return art.position + Vector2(-20, 25) + (Vector2(-107, -389) * (620.0 / ATTACK_TEXTURE.get_height())).rotated(art.rotation)
+
+func _rest_hand() -> Vector2:
+	return _shoulder_position() + Vector2(-12, 143).rotated(art.rotation)
+
+func _cocked_hand() -> Vector2:
+	return _shoulder_position() + Vector2(-85, 75).rotated(art.rotation)
+
 func _arm_endpoint() -> Vector2:
-	var shoulder := Vector2(-66, -435)
-	var target := to_local(arm_target)
+	var progress := _phase_progress()
 	if state == &"windup":
-		return shoulder + Vector2(-110, 100) + Vector2(sin(clock * 12.0) * 12.0, cos(clock * 9.0) * 10.0)
-	var extension := 0.0
+		return _rest_hand().lerp(_cocked_hand(), smoothstep(0.0, 1.0, progress))
 	if state == &"strike":
-		var progress := clampf(1.0 - time_left / strike_duration, 0.0, 1.0)
-		# A quick whip followed by a brief held reach gives the hand a readable impact.
-		extension = 0.12 + 0.88 * (1.0 - pow(1.0 - minf(progress / 0.72, 1.0), 3.0))
-	elif state == &"recover":
-		var duration := 0.30 if frenzy_left > 0.0 else 0.90
-		var progress := clampf(1.0 - time_left / duration, 0.0, 1.0)
-		extension = 1.0 - pow(progress, 1.8)
-	return shoulder.lerp(target, extension)
+		var t := smoothstep(0.0, 0.72, progress)
+		var start := to_local(reach_start)
+		var target := to_local(arm_target)
+		# Anticipation flows into an arcing reach, with zero velocity at contact.
+		return start.lerp(target, t) + Vector2(0, -42.0 * sin(PI * t))
+	if state == &"recover" and reaching:
+		var t := smoothstep(0.06, 1.0, progress)
+		return to_local(recovery_start).lerp(_rest_hand(), t) + Vector2(0, 45.0 * sin(PI * t))
+	return _rest_hand()
+
+func _hand_direction(shoulder: Vector2, hand: Vector2) -> Vector2:
+	var aim := (hand - shoulder).normalized()
+	var stretch := smoothstep(140.0, 340.0, shoulder.distance_to(hand))
+	# Wrist rotates into the strike; fingers and bangles never stretch.
+	return Vector2(-0.35, 0.94).normalized().slerp(aim, stretch).normalized()
 
 func _draw_reaching_arm(shoulder: Vector2, hand: Vector2) -> void:
-	var direction := hand - shoulder
-	if direction.length() < 20.0:
-		return
-	var normal := Vector2(-direction.y, direction.x).normalized()
-	var bend := minf(165.0, direction.length() * 0.29) * (0.9 + 0.1 * sin(clock * 9.0))
-	if state == &"windup":
-		bend = 65.0
-	var control := (shoulder + hand) * 0.5 + normal * bend
-	var segments := 26
-	for i in range(segments):
-		var t0 := float(i) / segments
-		var t1 := float(i + 1) / segments
-		var a := shoulder * pow(1.0 - t0, 2.0) + control * (2.0 * t0 * (1.0 - t0)) + hand * t0 * t0
-		var b := shoulder * pow(1.0 - t1, 2.0) + control * (2.0 * t1 * (1.0 - t1)) + hand * t1 * t1
-		var tangent := b - a
-		var source_x := ARM_REGION.position.x + ARM_REGION.size.x * t0
-		var source_w := ARM_REGION.size.x / segments + 2.0
-		draw_set_transform(a, tangent.angle(), Vector2.ONE)
-		draw_texture_rect_region(ARM_TEXTURE, Rect2(0, -45.0, tangent.length() + 2.0, 90.0), Rect2(source_x, ARM_REGION.position.y, source_w, ARM_REGION.size.y))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var direction := _hand_direction(shoulder, hand)
+	var wrist := hand - direction * ((PALM_X - WRIST_X) * HAND_SCALE)
+	var distance := shoulder.distance_to(wrist)
+	var control_a := shoulder + Vector2(0, minf(100.0, distance * 0.7)).rotated(art.rotation)
+	var control_b := wrist - direction * minf(135.0, distance * 0.38)
+	var vertices := PackedVector2Array()
+	var uvs := PackedVector2Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	var segments := 48
+	var half_width := ARM_REGION.size.y * HAND_SCALE * 0.5
+	for i in range(segments + 1):
+		var t := float(i) / segments
+		var center := shoulder.bezier_interpolate(control_a, control_b, wrist, t)
+		var tangent := shoulder.bezier_derivative(control_a, control_b, wrist, t).normalized()
+		var normal := Vector2(-tangent.y, tangent.x)
+		# The torso already owns the sleeve. Start with bare skin inside its cuff,
+		# feathering the overlap instead of bending a second sleeve over it.
+		var source_x := lerpf(430.0, WRIST_X, t)
+		var root_blend := smoothstep(0.0, minf(0.28, 18.0 / maxf(distance, 1.0)), t)
+		var width := half_width * lerpf(0.72, 1.0, root_blend)
+		var opacity := smoothstep(0.0, minf(0.12, 5.0 / maxf(distance, 1.0)), t)
+		for side in [-1.0, 1.0]:
+			vertices.append(center + normal * width * side)
+			uvs.append(Vector2(source_x, ARM_REGION.position.y + (0.0 if side < 0 else ARM_REGION.size.y)) / Vector2(ARM_TEXTURE.get_size()))
+			colors.append(Color(1, 1, 1, opacity))
+		if i < segments:
+			var j := i * 2
+			indices.append_array(PackedInt32Array([j, j + 1, j + 2, j + 1, j + 3, j + 2]))
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	arm_mesh.clear_surfaces()
+	arm_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var tint := art.modulate if state == &"dead" else Color(1, 1, 1, art.self_modulate.a)
+	arm_canvas.draw_mesh(arm_mesh, ARM_TEXTURE, Transform2D.IDENTITY, tint)
+	# One rigid wrist/palm/finger patch preserves anatomy at every reach distance.
+	arm_canvas.draw_set_transform(wrist, direction.angle(), Vector2.ONE)
+	arm_canvas.draw_texture_rect_region(ARM_TEXTURE, Rect2(-0.5, -half_width, (2150.0 - WRIST_X) * HAND_SCALE + 0.5, half_width * 2.0), Rect2(WRIST_X, ARM_REGION.position.y, 2150.0 - WRIST_X, ARM_REGION.size.y), tint)
+	arm_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _make_laugh() -> AudioStreamWAV:
 	# Uneven cackles, shifting vowel tones and a lower rasp give the ghost a voice.

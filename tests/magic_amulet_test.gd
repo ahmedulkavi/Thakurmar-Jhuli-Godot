@@ -53,10 +53,10 @@ func _run() -> void:
 			break
 	Input.action_release("move_right")
 	Input.action_release("jump")
-	_check(pickup.collected and prince.has_amulet, "Jumping from the rightmost upper platform collects the amulet")
+	_check(pickup.collected and prince.has_blood_amulet and not prince.has_amulet, "Island grants blood amulet without healing")
 	_check(game.mode == &"item_reveal" and paused and game.amulet_reveal.visible, "Collecting the amulet pauses play for its unlock animation")
-	_check(game.reveal_art.texture != null and game.reveal_copy.text == "Allows the user the magic of healing.", "Unlock animation presents the amulet and healing description")
-	_check(game.magic_bar.visible and game.magic_bar.value == 0.0 and game.combat_panel.size.y == 58.0, "Collecting introduces an initially empty blue magic bar")
+	_check(game.reveal_art.texture == game.BLOOD_AMULET_TEXTURE and game.reveal_copy.text.contains("crimson power"), "Unlock animation presents the blood amulet and description")
+	_check(not game.magic_bar.visible, "Blood amulet does not unlock healing or magic")
 	var magic_fill: StyleBoxFlat = game.magic_bar.get_theme_stylebox("fill")
 	_check(magic_fill.bg_color.b > magic_fill.bg_color.r and magic_fill.bg_color.b > magic_fill.bg_color.g, "The new magic bar is blue")
 	await _frames(70)
@@ -100,6 +100,15 @@ func _run() -> void:
 	_check(rose_through_deck, "Jumping from below passes through the island deck")
 	await _frames(55)
 	_check(prince.is_on_floor() and absf(prince.position.y - (island.position.y + 43.29)) < 1.0, "Descending after passing through lands back on the moss")
+
+	# Acquire healing at the merchant before testing its magic mechanics.
+	prince.is_resting = true
+	game.forest._set_essence(game.forest.HEALING_AMULET_PRICE)
+	game.mode = &"merchant"
+	_check(game.forest.purchase_healing_amulet(), "Healing amulet is purchased at the fountain")
+	game.mode = &"playing"
+	prince.is_resting = false
+	_check(prince.has_amulet and game.magic_bar.visible, "Healing purchase enables magic")
 
 	# Only confirmed sword damage fills magic.
 	prince.equip_sword()

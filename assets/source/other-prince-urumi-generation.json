@@ -1,0 +1,32 @@
+{
+  "tool": "Built-in image_gen.imagegen",
+  "source_asset": "assets/urumi-prince.png",
+  "output_asset": "assets/other-prince-urumi-motion.png",
+  "actual_canvas": [
+    1254,
+    1254
+  ],
+  "layout": {
+    "columns": 4,
+    "rows": 4,
+    "order": "row-major",
+    "windup": [
+      0,
+      3
+    ],
+    "sweep": [
+      4,
+      11
+    ],
+    "recovery": [
+      12,
+      15
+    ]
+  },
+  "references": [
+    "https://www.keralatourism.org/kalaripayattu/angathari/urumi",
+    "https://www.keralatourism.org/kalaripayattu/video-gallery/churikapayattu/1184",
+    "https://shajiskalari.com/Kalarippayattuebook.pdf"
+  ],
+  "prompt": "Use case: identity-preserve. Asset type: production 2D game full-body urumi animation sprite atlas.\nReference image is the exact character identity and costume: young brown-skinned Indian prince, wavy black hair, silver crown, royal-blue flowing sash with SILVER embroidery, dark indigo dhoti, silver belt and cuffs, barefoot, holding TWO small purple-gripped silver-ended URUMI HILTS, one in each hand. Retain face and costume. Natural warm skin.\nCreate ONE 2048x2048 transparent PNG sprite atlas, STRICTLY 4 columns by 4 rows, EXACTLY 16 complete distinct full-body poses reading left-to-right then top-to-bottom. Each cell 512x512. No labels, text, grid or background. All poses face RIGHT in side/three-quarter view. Crown-to-sole character height about390 pixels; plant soles at cell y=472; pelvis centered x=256 in every cell, fixed character scale, with at least30px margin for arms. Preserve identity and costume consistently across all16 poses. Show both arms and both hands with legible fist grips in all frames.\nAnimate believable Kalaripayattu TWIN URUMI hand and arm motion. The flexible steel strips themselves will be drawn in code: DRAW ONLY THE TWO SHORT HILTS, absolutely NO blades, ribbons, whips, loops or trails outside the hands. Make silver blade-emitting cap at the top of each held hilt clearly visible so code can attach a moving blade.\nFrames0-3 first row WINDUP: balanced low guard, elbows bend, both hands rotate and rise in staggered circular paths, forward wrist draws back above head, rear wrist rises across chest; torso winds away, knees flex. Each pose a visibly different phase, no duplicate poses.\nFrames4-7 second row FIRST HALF SWEEP: front hand drives from high behind-head through overhead forward extension into a downward diagonal pull; rear hand circles opposite, alternating high and low; hips rotate toward opponent, weight transfers forward, knees bend.\nFrames8-11 third row SECOND HALF SWEEP: wrists continue circular/figure-eight paths across and outside the torso, exchanging heights; elbows flex then extend through a broad sweep; clear dynamic hand positions at each step, strong but controlled torso twist, shoulders follow hands, feet stay registered.\nFrames12-15 final row RECOVERY: continue smaller wrist circles to gather momentum, elbows fold toward ribs, body settles back into low guard; final pose matches starting balanced guard.\nPainterly storybook game art matching the reference, clean silhouettes, anatomically coherent two arms/two hands per figure, silver crown consistent in all16 frames. REAL ALPHA TRANSPARENCY outside sprites, no white/gray backdrop or shadows, no missing or overlapping cells, no cropped limbs, no extra weapons."
+}

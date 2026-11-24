@@ -6,8 +6,10 @@ signal ladder_unlocked
 signal essence_changed(amount: int)
 signal essence_discovered
 signal essence_collected
+signal shakchunni_essence_collected
 
-const WORLD_WIDTH: float = 9200.0
+const WORLD_WIDTH: float = preload("res://scripts/underwater_kingdom.gd").WORLD_END
+const FOREST_FLOOR_END: float = 9150.0
 const GROUND_Y: float = 586.0
 const START := Vector2(170.0, GROUND_Y)
 const FOUNTAIN_X: float = 6670.0
@@ -23,10 +25,13 @@ const RESTING_ARMED = preload("res://assets/prince-resting.png")
 const RESTING_UNARMED = preload("res://assets/prince-resting-unarmed.png")
 const STEEL_RESTING_ARMED = preload("res://assets/prince-steel-resting.png")
 const STEEL_RESTING_UNARMED = preload("res://assets/prince-steel-resting-unarmed.png")
+const HUNTER_RESTING = preload("res://assets/prince-hunter-resting.png")
 const FOUNTAIN_WATER = preload("res://scripts/fountain_water.gd")
 const DISTANT_LEAVES = preload("res://scripts/distant_leaves.gd")
 const ESSENCE_DROP = preload("res://scripts/essence_drop.gd")
 const BOSS_ARENA = preload("res://scripts/boss_arena.gd")
+const BOSS_ESSENCE_DROP = preload("res://scripts/shakchunni_essence_drop.gd")
+const UNDERWATER_KINGDOM = preload("res://scripts/underwater_kingdom.gd")
 # Pixel bounds of the mossy walking surface, below the decorative foliage.
 # Map both the art and collision from the same source-image coordinates.
 const ISLAND_DECK := Rect2(70, 270, 1570, 70)
@@ -46,25 +51,38 @@ var upper_platforms: Array[StaticBody2D] = []
 var beyond_platforms: Array[StaticBody2D] = []
 var ladder: ForestLadder
 var boss_arena: Node2D
+var underwater: Node2D
 var fountain: Node2D
 var fountain_prompt: Label
+const PALACE_FOUNTAIN := Vector2(16900, ForestPrince.HALL_FLOOR_Y)
+var palace_fountain: Node2D
+var checkpoint := Vector2(FOUNTAIN_X, GROUND_Y)
 var checkpoint_active := false
 var essence := 0
 var has_discovered_essence := false
 var has_steel_stance := false
+var has_hunter_stance := false
+var has_shakchunni_essence := false
 const STEEL_STANCE_PRICE := 200
+const HUNTER_STANCE_PRICE := 200
+const HEALING_AMULET_PRICE := 200
+const ROYAL_LEVEL_2_PRICE := 200
+const BLOOD_BLADE_PRICE := 200
+var royal_level_2_unlocked := false
+var blood_blade_unlocked := false
 var essence_drops: Node2D
 var drop_generation := 0
 
 func _ready() -> void:
 	# Extend the existing walkable forest into the sealed boss arena.
 	var floor_shape := RectangleShape2D.new()
-	floor_shape.size = Vector2(WORLD_WIDTH, 140)
+	floor_shape.size = Vector2(FOREST_FLOOR_END, 140)
 	$Floor/Collision.shape = floor_shape
-	$Floor.position.x = WORLD_WIDTH * 0.5
-	$RightBoundary.position.x = WORLD_WIDTH + 20.0
-	$Ground.region_rect.size.x = WORLD_WIDTH / $Ground.scale.x
+	$Floor.position.x = FOREST_FLOOR_END * 0.5
+	$RightBoundary.position = Vector2(WORLD_WIDTH + 20.0, 850)
+	$Ground.region_rect.size.x = FOREST_FLOOR_END / $Ground.scale.x
 	camera.limit_right = int(WORLD_WIDTH)
+	camera.limit_bottom = 1400
 	$Goal.monitoring = false
 	$Goal.hide()
 	_build_platforms()
@@ -75,31 +93,60 @@ func _ready() -> void:
 	add_child(essence_drops)
 	_build_combat()
 	_build_fountain()
+	palace_fountain = fountain.duplicate()
+	palace_fountain.name = "PalaceFountain"
+	palace_fountain.position = PALACE_FOUNTAIN
+	add_child(palace_fountain)
 	boss_arena = Node2D.new()
 	boss_arena.set_script(BOSS_ARENA)
 	boss_arena.player = player
 	add_child(boss_arena)
 	boss_arena.boss_defeated.connect(_on_boss_victory)
+	underwater = Node2D.new()
+	underwater.set_script(UNDERWATER_KINGDOM)
+	underwater.player = player
+	add_child(underwater)
+	underwater.enemy_defeated.connect(_on_enemy_defeated)
+	underwater.boss.defeated.connect(func() -> void:
+		completed = true
+		journey_complete.emit())
 	reset_journey()
 	_animate_atmosphere()
 
 func _process(_delta: float) -> void:
 	# The original camera places the prince left of centre for a view ahead.
 	camera.position.x = clampf(player.position.x + 220.0, 640.0, WORLD_WIDTH - 640.0)
-	camera.position.y = clampf(player.position.y + 150.0, 100.0, 360.0)
+	var target_y := clampf(player.position.y + 150.0, 100.0, 360.0)
+	if player.position.x >= ForestPrince.WATER_START_X:
+		var descent := smoothstep(ForestPrince.WATER_START_X, ForestPrince.WATER_START_X + 360.0, player.position.x)
+		target_y = lerpf(target_y, maxf(target_y, player.position.y - 95.0), descent)
+	var hall_blend := smoothstep(ForestPrince.HALL_APPROACH_X, ForestPrince.DRY_HALL_X, player.position.x)
+	camera.position.y = lerpf(minf(target_y, 1040.0), ForestPrince.HALL_FLOOR_Y - 275.0, hall_blend)
 	if fountain_prompt:
-		fountain_prompt.visible = player.is_resting or _near_fountain()
-		fountain_prompt.text = "W / UP  MERCHANT     OTHER BUTTON  STAND" if player.is_resting else "E / RB  REST"
+		fountain_prompt.visible = not player.is_resting and _near_fountain(fountain.position)
+		var palace_prompt := palace_fountain.get_node("Prompt") as Label
+		palace_prompt.visible = not player.is_resting and _near_fountain(PALACE_FOUNTAIN)
+		palace_prompt.text = "E / RB  REST"
+		fountain_prompt.text = "E / RB  REST"
 	if not ladder.active and ladder_guardians.size() > 0 and ladder_guardians.all(func(bat: CharacterBody2D) -> bool: return bat.health <= 0):
 		ladder.unlock()
 		ladder_unlocked.emit()
 
 func reset_journey() -> void:
 	completed = false
+	var boss_drop := get_node_or_null("ShakchunniEssence")
+	if boss_drop:
+		boss_drop.queue_free()
 	if boss_arena:
 		boss_arena.reset_encounter()
 	checkpoint_active = false
+	checkpoint = Vector2(FOUNTAIN_X, GROUND_Y)
+	underwater.boss.reset_boss()
 	has_steel_stance = false
+	has_hunter_stance = false
+	has_shakchunni_essence = false
+	royal_level_2_unlocked = false
+	blood_blade_unlocked = false
 	has_discovered_essence = false
 	_set_essence(0)
 	player.reset_to(START)
@@ -122,6 +169,8 @@ func _reset_enemies() -> void:
 		enemy.reset_enemy()
 	for bat in bats:
 		bat.reset_enemy()
+	if underwater:
+		underwater.reset_enemies()
 
 func _set_essence(value: int) -> void:
 	essence = maxi(0, value)
@@ -133,6 +182,47 @@ func purchase_steel_stance() -> bool:
 	has_steel_stance = true
 	if not player.god_mode:
 		_set_essence(essence - STEEL_STANCE_PRICE)
+	return true
+
+func purchase_hunter_stance() -> bool:
+	if not player.is_resting or has_hunter_stance or not has_shakchunni_essence or (not player.god_mode and essence < HUNTER_STANCE_PRICE):
+		return false
+	has_hunter_stance = true
+	if not player.god_mode:
+		_set_essence(essence - HUNTER_STANCE_PRICE)
+	return true
+
+func purchase_healing_amulet() -> bool:
+	if not player.is_resting or player.has_amulet or (not player.god_mode and essence < HEALING_AMULET_PRICE):
+		return false
+	if not player.god_mode:
+		_set_essence(essence - HEALING_AMULET_PRICE)
+	player.equip_amulet()
+	return true
+
+func purchase_skill(skill: StringName) -> bool:
+	if not player.is_resting:
+		return false
+	var price := 0
+	match skill:
+		&"royal_2":
+			if royal_level_2_unlocked:
+				return false
+			price = ROYAL_LEVEL_2_PRICE
+		&"blood_blade":
+			if blood_blade_unlocked or not royal_level_2_unlocked or not player.has_blood_amulet:
+				return false
+			price = BLOOD_BLADE_PRICE
+		_:
+			return false
+	if not player.god_mode and essence < price:
+		return false
+	if not player.god_mode:
+		_set_essence(essence - price)
+	if skill == &"royal_2":
+		royal_level_2_unlocked = true
+	else:
+		blood_blade_unlocked = true
 	return true
 
 func _on_enemy_defeated(at: Vector2, value: int) -> void:
@@ -157,25 +247,32 @@ func _on_essence_collected(value: int) -> void:
 	else:
 		essence_collected.emit()
 
-func _near_fountain() -> bool:
-	return player.health > 0 and player.is_on_floor() and absf(player.position.x - FOUNTAIN_X) < 115.0 and absf(player.position.y - GROUND_Y) < 5.0
+func _near_fountain(at: Vector2 = Vector2(FOUNTAIN_X, GROUND_Y)) -> bool:
+	return player.health > 0 and player.is_on_floor() and absf(player.position.x - at.x) < 115.0 and absf(player.position.y - at.y) < 5.0
 
 func try_rest() -> bool:
-	if not _near_fountain() or player.is_climbing or player.is_resting:
+	var at := PALACE_FOUNTAIN if _near_fountain(PALACE_FOUNTAIN) else fountain.position
+	if not _near_fountain(at) or player.is_climbing or player.is_resting:
 		return false
 	checkpoint_active = true
+	checkpoint = at
+	underwater.boss.reset_boss()
 	_reset_enemies()
-	var rest_texture: Texture2D = (STEEL_RESTING_ARMED if player.has_sword else STEEL_RESTING_UNARMED) if player.stance == &"steel" else (RESTING_ARMED if player.has_sword else RESTING_UNARMED)
-	player.begin_resting(Vector2(FOUNTAIN_X - 38.0, GROUND_Y), rest_texture)
+	var rest_texture: Texture2D = HUNTER_RESTING if player.stance == &"hunter" else (STEEL_RESTING_ARMED if player.has_sword else STEEL_RESTING_UNARMED) if player.stance == &"steel" else (RESTING_ARMED if player.has_sword else RESTING_UNARMED)
+	player.begin_resting(checkpoint + Vector2.LEFT * 38.0, rest_texture)
 	return true
 
 func recover_at_fountain() -> void:
 	completed = false
-	if boss_arena:
+	var boss_drop := get_node_or_null("ShakchunniEssence")
+	if boss_drop:
+		boss_drop.queue_free()
+	if checkpoint != PALACE_FOUNTAIN:
 		boss_arena.reset_encounter()
+	underwater.boss.reset_boss()
 	_reset_enemies()
-	player.recover_at_checkpoint(Vector2(FOUNTAIN_X - 38.0, GROUND_Y))
-	camera.position = Vector2(minf(FOUNTAIN_X + 220.0, WORLD_WIDTH - 640.0), 360.0)
+	player.recover_at_checkpoint(checkpoint + Vector2.LEFT * 38.0)
+	camera.position = Vector2(minf(checkpoint.x + 220.0, WORLD_WIDTH - 640.0), ForestPrince.HALL_FLOOR_Y - 275.0 if checkpoint == PALACE_FOUNTAIN else 360.0)
 	camera.reset_smoothing()
 
 func _build_fountain() -> void:
@@ -200,6 +297,7 @@ func _build_fountain() -> void:
 	water.set_script(FOUNTAIN_WATER)
 	fountain.add_child(water)
 	fountain_prompt = Label.new()
+	fountain_prompt.name = "Prompt"
 	fountain_prompt.position = Vector2(-240, -float(bounds.size.y) * factor - 35)
 	fountain_prompt.size = Vector2(480, 24)
 	fountain_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -211,9 +309,17 @@ func _build_fountain() -> void:
 	fountain.add_child(fountain_prompt)
 
 func _on_boss_victory() -> void:
-	if not completed:
-		completed = true
-		journey_complete.emit()
+	if not has_shakchunni_essence and get_node_or_null("ShakchunniEssence") == null:
+		var drop := Area2D.new()
+		drop.name = "ShakchunniEssence"
+		drop.set_script(BOSS_ESSENCE_DROP)
+		drop.position = boss_arena.boss.position + Vector2(0, -65)
+		drop.collected.connect(_on_shakchunni_essence_collected)
+		add_child(drop)
+
+func _on_shakchunni_essence_collected() -> void:
+	has_shakchunni_essence = true
+	shakchunni_essence_collected.emit()
 
 func _build_combat() -> void:
 	sword_pickup = Area2D.new()

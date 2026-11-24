@@ -9,21 +9,22 @@ Open **`project.godot` in Godot 4.7.2** and press **F6** with `scenes/main.tscn`
 | Action | Keyboard | Controller |
 | --- | --- | --- |
 | Move | A / D | Left stick |
-| Select Royal / Steel stance | Left / Right arrow | D-pad left / right |
+| Select Royal / Steel / Hunter stance | Left / Right / Up arrow | D-pad left / right / up |
 | Jump | Space | A / bottom face button |
+| Swim in the underwater kingdom | A / D to move, W / S to rise or dive, Space to rise | Left stick to move, A to rise |
 | Climb revealed ladder | W / Up; S / Down | D-pad up / down or left stick |
 | Attack / chain sword strikes after pickup | J / X / left mouse button | X / left face button |
-| Focus healing after amulet pickup | Hold H | B / right face button |
+| Magic: focus healing / Hunter dodge roll | Hold H / press H | B / right face button |
 | Rest at the fountain | E | Right shoulder / RB |
-| Open merchant while resting | W / Up | D-pad up |
+| Navigate resting menu | W / S | D-pad up / down |
 | Toggle god mode (debug) | G | Select / Back |
-| Pause / resume | Esc or the on-screen Pause button | Start |
+| Pause / resume | Esc | Start |
 | Restart, including while paused or finished | R | Y / top face button |
 | Toggle fullscreen | F11 | — |
 
 The game starts maximized to fit the current monitor. **F11** switches to the monitor's native fullscreen resolution, including **2560 × 1440 on a QHD / 2K display**, and restores the previous window mode when pressed again. Resizing updates the interface and the forest's rendering resolution automatically. The forest renders at its displayed pixel size while keeping the same gameplay view and proportions.
 
-Hold jump for a higher leap; release it for a short hop. The controller includes a 100 ms grace period after leaving an edge and a 120 ms jump input buffer before landing. The pause and ending screens also work with mouse or keyboard focus (Enter / Space).
+Hold jump for a higher leap; release it for a short hop. The controller includes a 100 ms grace period after leaving an edge and a 120 ms jump input buffer before landing. Esc or controller Start opens a character menu with inventory, current stats, and directional stance slots. The menu and ending screens also work with mouse or keyboard focus (Enter / Space).
 
 The rocks are a solid obstacle to jump over. Landing on them makes the prince slide back to the ground; they cannot be used as a platform or a jumping surface.
 
@@ -33,7 +34,7 @@ Beyond the rocks, five rooted branch platforms form a staircase up and back down
 
 Defeat the three blue-glowing bats to make a single ladder appear in a smoky magic poof. Its foot rests on the highest central branch, and it leads to a broad raised deck. Move across the deck and jump to the surrounding upper branches. Hold **W / Up** to climb or **S / Down** to descend. The prince steps off automatically at either end; jump to leave the ladder early. Climbing uses separate upward and downward sprite animations.
 
-From the rightmost upper branch, make a running jump to the floating island and collect the Healing Amulet. Its animated unlock presentation introduces the blue magic bar beneath stamina. The bar starts empty and each confirmed sword hit grants **20 magic**; missed and blocked attacks grant none. Hold **H** with at least **40 magic** while standing to focus for **0.9 seconds**, spend the magic, and restore **30 health**. The prince cannot move during focus. Releasing early or taking damage cancels healing without spending magic.
+From the rightmost upper branch, make a running jump to the floating island and collect the Blood Amulet. Its animated reveal describes its mysterious crimson power; its gameplay effect will be added later. Buy the Healing Amulet from the fountain merchant for 200 Essence to unlock the blue magic bar beneath stamina. The bar starts empty and each confirmed sword hit grants **20 magic**; missed and blocked attacks grant none. Hold **H** with at least **40 magic** while standing to focus for **0.9 seconds**, spend the magic, and restore **30 health**. The prince cannot move during focus. Releasing early or taking damage cancels healing without spending magic.
 
 The prince takes a small physical step into grounded strikes and keeps normal movement in the air. The sword can damage each shade once per attack, only during the cutting or extended thrust frames, and cannot pass through solid obstacles. Hits add a brief impact hold, sparks, and a blade trail. Taking damage interrupts an attack and cancels a queued follow-up. Six shades guard the forest, including four beyond the old clearing. Their orange glow warns of an approaching lunge; strike to interrupt them or jump clear. Four sword hits defeat a shade. Their windup lasts 0.24 seconds, followed by a faster lunge and 0.60 seconds of recovery.
 
@@ -51,7 +52,9 @@ Three guardian bats patrol the original staircase; three more hunt among the bra
 
 Inspired by Bengali folklore descriptions of Shakchunni as a tree-dwelling spirit associated with conch-shell bangles ([USC folklore archive](https://folklore.usc.edu/bengali-legend-shakchunni/), [The Daily Star](https://online.thedailystar.net/life-living/news/top-6-bengali-supernatural-beings-you-should-know-about-halloween-3157066)).
 
-Beyond the fountain, press **E / RB** at the fog to enter Shakchunni's arena. The fog seals during the fight and checkpoint retry resets her. She moves around the arena as she fights. Climb the floating islands to reach her upper body; evade the marked locations before her arm curls out and whips toward them. Her attack torso blends into the idle and laugh poses. After every few strikes she laughs and becomes invulnerable, then attacks much faster for a short time. Defeating her completes the journey.
+Beyond the fountain, press **E / RB** at the fog to enter Shakchunni's arena. The fog seals during the fight and checkpoint retry resets her. She moves around the arena as she fights. Climb the floating islands to reach her upper body; evade the marked locations before her arm curls out and whips toward them. Her reaching arm bends from a torso-anchored shoulder into a rotating wrist; the skin elongates while the hand and bangles retain their proportions. Anticipation, contact, and retraction flow continuously, including interrupted blocks. Idle and laugh frames interpolate with subtle hair and sari motion, body follow-through, and a collapse that preserves the final pose. After every few strikes she laughs and becomes invulnerable, then attacks much faster for a short time. Defeating her drops the Essence of Shakchunni and the journey continues. Collect it, return to the fountain merchant, and buy Hunter Stance for 200 Essence. Press Up to equip Hunter. Hunter fires arrows with the attack button for 20 magic each; the blue bar refills at 8 magic per second. The magic button performs a forward dodge roll for 30 stamina. The Essence of Shakchunni reveal reads, “When the hunter becomes prey, an apex hunter is born.”
+
+After the fight, continue right down the riverbank into the underwater kingdom. The prince can breathe beneath the surface without a timer. Swim freely in any stance using the movement controls; press Space or the controller jump button to rise. Royal, Steel, and Hunter each have their own full-body swim animation. Gloom eels warn before dashing at the prince, while coral sentinels patrol and shoot water bolts. Both can be defeated for Essence.
 
 The original looping track at `assets/forest-music.ogg` plays during the journey. Set `FOREST_MUSIC_ENABLED` in `scripts/main.gd` to disable it. Its source render can be recreated with `tools/compose_forest_music.py` (Python and NumPy), then encoded as Ogg Vorbis.
 
@@ -63,7 +66,17 @@ Steel remains selected after a checkpoint retry; a new journey returns to Royal.
 
 For debugging, **G / Select** toggles god mode. The prince takes no damage, sword hits defeat enemies instantly, and Essence is unlimited. Purchases made in god mode do not spend the collected balance. The setting remains active across restarts until toggled off.
 
-While resting at the old fountain, press **W / Up** to visit the merchant. Steel Stance costs **200 Essence** and can be purchased once per journey. The purchase survives checkpoint retries; a new journey clears it. Steel reduces incoming damage by 75%. Press attack shortly before an enemy hit to counter for heavy damage; ordinary attacks are unavailable in Steel. Use up / down to choose an option and controller A / X to select it. Leave the merchant to return to the resting pose.
+While playing, press **Select + Down** (or **G + Down**) to teleport just before Shakchunni's fog gate. While underwater, the same shortcut sends the prince to the dry hall just before the second boss arena instead. Press **E / RB** at the fog to start the encounter; the shortcut leaves god mode as it was.
+
+Press **E / RB** at the fog in the dry hall to enter the second boss arena. The gate blocks retreat during the fight and opens when the Other Prince is defeated. Resting, retrying, or restarting restores the gate for the next encounter.
+
+The Other Prince can react to an incoming sword swing or Hunter arrow with a **70% chance** of switching to Copper Steel guard. Sword hits against his frontal guard trigger a riposte; arrows reflect back toward the shooter and can hurt the prince. Attack from behind his guard or punish a committed riposte or urumi sweep to find an opening.
+
+His Royal stance wears silver and blue with a silver crown. Copper Steel wears blue cloth and copper metalwork, with a copper-and-silver crown. Actual stance changes release a brief silver, copper, and blue aura; his skin keeps its natural color in both stances.
+
+Twin Urumi uses a dedicated sixteen-frame hand-and-body animation: four windup poses, eight sweep poses, and four recovery poses. Each flexible blade stays attached to its moving hilt and keeps a constant length while coiling and unfurling. Only the committed sweep deals damage, and collision follows the same blade curves that are drawn. The motion draws on [Kerala Tourism's urumi reference](https://www.keralatourism.org/kalaripayattu/angathari/urumi) and [Shaji K. John's Kalarippayattu guide](https://shajiskalari.com/Kalarippayattuebook.pdf). The built-in imagegen prompt and asset details are saved in `assets/source/other-prince-urumi-generation.json`.
+
+Resting at the old fountain opens a menu: choose **Contemplate** for the merchant, **Meditate** for the Royal Stance skill tree, or **Leave** to stand. Steel Stance, Hunter Stance, and the Healing Amulet each cost **200 Essence** and can be purchased once per journey. The merchant displays items in a grid and darkens purchases you cannot afford. The purchase survives checkpoint retries; a new journey clears it. Steel reduces incoming damage by 75%. Press attack shortly before an enemy hit to counter for heavy damage; ordinary attacks are unavailable in Steel. Use up / down to choose an option and controller A / X to select it. Leave the merchant to return to the resting pose.
 
 ## Project layout
 
@@ -82,6 +95,7 @@ While resting at the old fountain, press **W / Up** to visit the merchant. Steel
 - `scripts/magic_amulet.gd` — animated amulet pickup on the floating upper island.
 - `scripts/essence_drop.gd` — rotating, collectible Essence coins dropped by defeated enemies.
 - `scripts/forest.gd` — journey reset, camera tracking, goal detection, and mist tweens.
+- `scripts/underwater_kingdom.gd`, `scripts/water_enemy.gd`, and `scripts/water_bolt.gd` — riverbank passage, underwater palace, and water enemies.
 - `scripts/main.gd` — native Godot interface, input, pause, and completion flow.
 - `assets/` — copies of the original artwork, source sheets, and art provenance. All runtime assets are here.
 - `tests/gameplay_test.gd` — automated gameplay integration checks.
@@ -94,6 +108,7 @@ While resting at the old fountain, press **W / Up** to visit the merchant. Steel
 - `tests/extended_forest_test.gd` — the extended route, new staircase jumps, enemy reset, and relocated ending.
 - `tests/fountain_rest_test.gd` — fountain interaction, recovery, enemy reset, sitting, and checkpoint retry.
 - `tests/shakchunni_test.gd` ? fog gate, reachable islands, boss combat, phases, retry, and victory.
+- `tests/underwater_kingdom_test.gd` — boss exit, riverbank crossing, swimming in each stance, water enemies, and reset.
 - `tests/merchant_test.gd` ? merchant access, affordability, purchase, and reset checks.
 - `tests/essence_test.gd` — enemy drops, values, collection, HUD, pause, rest, and retry.
 - `tests/ladder_test.gd` — bat-gated ladder reveal, climbing in both directions, upper platforms, pause, and reset.
@@ -136,3 +151,7 @@ godot --path . --fixed-fps 60 --script res://tests/forest_expansion_test.gd -- -
 ```
 
 Validated using Godot 4.7.2 with the Compatibility renderer. No external plugins are required.
+
+Meditation opens the Royal Stance skill tree. Royal Stance is already known; Royal Stance Level 2 costs 200 Essence, and Blood Blade costs 200 Essence and requires Level 2 and the Blood Amulet. Skills persist through checkpoint retries and reset on a new journey. Blood Blade is an unlock only; its combat effect will be added later.
+
+Hunter art assets are in assets/ under the hunter-stance, essence-of-shakchunni, and prince-hunter filenames. The original amulet-style soul art is preserved as essence-of-shakchunni-amulet.png. The active essence art is a green spirit inspired by the regular Essence coin and Shakchunni boss. These assets were generated with the built-in image generation tool using existing game art as references.

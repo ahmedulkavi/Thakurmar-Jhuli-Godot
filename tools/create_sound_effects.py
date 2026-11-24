@@ -63,6 +63,9 @@ save('hurt', np.exp(-t * 13) * (0.7 * tone(t, 180, 75) + 0.75 * noise(t, 7)))
 t = times(0.50)
 save('counter', np.exp(-t * 23) * noise(t, 3) + 0.9 * bell(t, 680, decay=8) + 0.55 * bell(t, 1040, decay=11))
 
+t = times(0.38)
+save('block', 0.7 * np.exp(-t * 45) * noise(t, 2) + 0.9 * bell(t, 1150, decay=14) + 0.5 * bell(t, 1830, decay=18))
+
 t = times(0.85)
 save('item', bell(t, 660, 0.0, 5) + bell(t, 830, 0.10, 5) + bell(t, 990, 0.20, 4) + 0.5 * bell(t, 1320, 0.32, 5))
 
@@ -87,4 +90,4 @@ save('land_wood', np.exp(-t * 21) * (0.8 * tone(t, 220, 120) + 0.4 * np.sin(2 * 
 
 t = times(0.22)
 save('land_stone', np.exp(-t * 27) * (0.55 * tone(t, 195, 85) + 0.65 * noise(t, 3)) + 0.3 * bell(t, 1100, decay=25))
-print('Generated 13 sound effects in', out)
+print('Generated 14 sound effects in', out)

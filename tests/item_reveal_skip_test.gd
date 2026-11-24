@@ -15,6 +15,9 @@ func _run() -> void:
 	var prince: ForestPrince = game.forest.player
 	prince.equip_sword(true)
 	_check(game.mode == &"item_reveal" and paused, "Sword pickup opens the reveal")
+	_check(not game.amulet_reveal.get_children().any(func(child: Node) -> bool: return child is Label and "SKIP" in child.text), "Pickup reveal has no skip prompt")
+	await _frames(42)
+	_check(game.reveal_copy.modulate.a > 0.0, "Description starts appearing during the item animation")
 	var key := InputEventKey.new()
 	key.keycode = KEY_R
 	key.physical_keycode = KEY_R

@@ -42,6 +42,52 @@ func _run() -> void:
 	await _frames(2)
 	_check(not prince.god_mode and not game.god_mode_indicator.visible, "Controller Select disables god mode")
 	_check(prince.take_damage(20, Vector2.ZERO) and prince.health == 80, "Normal damage returns when disabled")
+	_joy_button(JOY_BUTTON_BACK, false)
+	prince.position = Vector2(200, game.forest.GROUND_Y)
+	_joy_button(JOY_BUTTON_BACK, true)
+	await _frames(2)
+	_check(prince.god_mode, "Select alone still toggles god mode")
+	_joy_button(JOY_BUTTON_DPAD_DOWN, true)
+	await _frames(2)
+	_check(absf(prince.position.x - (game.forest.boss_arena.FOG_X - 60.0)) < 2.0 and prince.position.y == game.forest.GROUND_Y, "Select then Down teleports before Shakchunni")
+	_check(is_equal_approx(game.forest.camera.position.y, 360.0), "Teleport retains ground-level camera framing")
+	_check(not prince.god_mode and not game.god_mode_indicator.visible and not game.forest.boss_arena.active, "Teleport preserves god mode and leaves encounter dormant")
+	_joy_button(JOY_BUTTON_BACK, false)
+	_joy_button(JOY_BUTTON_DPAD_DOWN, false)
+	prince.position = Vector2(200, game.forest.GROUND_Y)
+	_joy_button(JOY_BUTTON_DPAD_DOWN, true)
+	_joy_button(JOY_BUTTON_BACK, true)
+	await _frames(2)
+	_check(absf(prince.position.x - (game.forest.boss_arena.FOG_X - 60.0)) < 2.0 and not prince.god_mode, "Down then Select teleports without toggling god mode")
+	_joy_button(JOY_BUTTON_BACK, false)
+	_joy_button(JOY_BUTTON_DPAD_DOWN, false)
+	# Either order of the chord selects the second arena when swimming.
+	for down_first in [false, true]:
+		prince.position = Vector2(11000, 800)
+		prince.velocity = Vector2.ZERO
+		await _frames(3)
+		_check(prince.in_water, "Debug shortcut starts underwater")
+		var god_mode_before := prince.god_mode
+		if down_first:
+			_joy_button(JOY_BUTTON_DPAD_DOWN, true)
+			_joy_button(JOY_BUTTON_BACK, true)
+		else:
+			_joy_button(JOY_BUTTON_BACK, true)
+			_joy_button(JOY_BUTTON_DPAD_DOWN, true)
+		await _frames(3)
+		var rival: CharacterBody2D = game.forest.underwater.boss
+		_check(absf(prince.position.x - (rival.ENTRY_X - 60.0)) < 2.0 and is_equal_approx(prince.position.y, prince.HALL_FLOOR_Y), "Underwater shortcut lands before the second boss arena")
+		_check(not prince.in_water and not rival.active and prince.god_mode == god_mode_before, "Underwater shortcut restores land movement, preserves god mode and leaves rival dormant")
+		_check(is_equal_approx(game.forest.camera.position.y, prince.HALL_FLOOR_Y - 275.0), "Second boss shortcut frames the dry hall")
+		_joy_button(JOY_BUTTON_BACK, false)
+		_joy_button(JOY_BUTTON_DPAD_DOWN, false)
+	Input.action_press("move_right")
+	await _frames(40)
+	Input.action_release("move_right")
+	_check(not game.forest.underwater.boss.active, "Walking forward after the shortcut stops at the second fog gate")
+	_key(KEY_E)
+	await _frames(2)
+	_check(game.forest.underwater.boss.active, "Interacting with the fog after the shortcut starts the second boss encounter")
 	for failure in failures:
 		push_error(failure)
 	if failures.is_empty():
@@ -59,6 +105,12 @@ func _key(code: Key) -> void:
 	event = InputEventKey.new()
 	event.keycode = code
 	event.physical_keycode = code
+	Input.parse_input_event(event)
+
+func _joy_button(button: JoyButton, pressed: bool) -> void:
+	var event := InputEventJoypadButton.new()
+	event.button_index = button
+	event.pressed = pressed
 	Input.parse_input_event(event)
 
 func _check(condition: bool, message: String) -> void:

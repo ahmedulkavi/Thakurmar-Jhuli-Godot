@@ -7,6 +7,12 @@ const RUN_SHEET = preload("res://assets/prince-armed-run-v2.png")
 const STEEL_SHEET = preload("res://assets/prince-steel-combat.png")
 const STEEL_LOCOMOTION_SHEET = preload("res://assets/prince-steel-locomotion.png")
 const STEEL_WALK_SHEET = preload("res://assets/prince-steel-walk.png")
+const HUNTER_SHEET = preload("res://assets/prince-hunter-sheet.png")
+const ROYAL_SWIM_SHEET = preload("res://assets/prince-royal-swim.png")
+const STEEL_SWIM_SHEET = preload("res://assets/prince-steel-swim.png")
+const HUNTER_SWIM_SHEET = preload("res://assets/prince-hunter-swim.png")
+const SWORD_SWIM_SHEET = preload("res://assets/prince-sword-swim.png")
+const SWORD_SWIM_STROKE := [0, 0, 1, 1, 2, 2, 1, 1]
 const RUN_POSE_SCALE: float = 122.0 / 383.0
 const RUN_ORIGIN := Vector2(254.0, 423.0)
 const FRAME_TIMES: Array[float] = [0.045, 0.045, 0.035, 0.03, 0.04, 0.045, 0.065, 0.095]
@@ -34,12 +40,23 @@ var steel_frames: Array[AtlasTexture] = []
 var steel_locomotion_frames: Array[AtlasTexture] = []
 var steel_walk_frames: Array[AtlasTexture] = []
 var steel_equipped := false
+var hunter_equipped := false
+var hunter_frames: Array[AtlasTexture] = []
+var royal_swim_frames: Array[AtlasTexture] = []
+var steel_swim_frames: Array[AtlasTexture] = []
+var hunter_swim_frames: Array[AtlasTexture] = []
+var sword_swim_frames: Array[AtlasTexture] = []
 var pose_frame: int = 0
 var pose_set: StringName = &"combat"
 var locomotion_frame: int = 0
 var stride_distance: float = 0.0
 var facing: float = 1.0
 var breath_clock: float = 0.0
+var stroke_phase := 0.0
+var swim_speed := 0.0
+var swim_weapon: StringName
+var swim_grip := Vector2.ZERO
+var weapon_progress := 0.0
 var traces: Array[Dictionary] = []
 var impacts: Array[Dictionary] = []
 
@@ -61,6 +78,11 @@ func _ready() -> void:
 	steel_frames = _atlas_frames(STEEL_SHEET)
 	steel_locomotion_frames = _atlas_frames(STEEL_LOCOMOTION_SHEET)
 	steel_walk_frames = _atlas_frames(STEEL_WALK_SHEET, 2)
+	hunter_frames = _atlas_frames(HUNTER_SHEET)
+	royal_swim_frames = _atlas_frames(ROYAL_SWIM_SHEET, 2)
+	steel_swim_frames = _atlas_frames(STEEL_SWIM_SHEET, 2)
+	hunter_swim_frames = _atlas_frames(HUNTER_SWIM_SHEET, 2)
+	sword_swim_frames = _atlas_frames(SWORD_SWIM_SHEET)
 	frames = royal_frames
 	locomotion_frames = royal_locomotion_frames
 	run_frames = royal_run_frames
@@ -87,9 +109,91 @@ func set_steel(enabled: bool) -> void:
 	locomotion_frames = steel_locomotion_frames if enabled else royal_locomotion_frames
 	run_frames = steel_walk_frames if enabled else royal_run_frames
 
+func set_hunter(enabled: bool) -> void:
+	hunter_equipped = enabled
+	if enabled:
+		frames = hunter_frames
+	elif steel_equipped:
+		frames = steel_frames
+	else:
+		frames = royal_frames
+
+func show_hunter(action: StringName, progress: float, direction: float, tint: Color, state: StringName, moving: bool) -> void:
+	var index := 0
+	if action == &"fire":
+		index = mini(3, int(progress * 4.0))
+	elif action == &"roll":
+		index = 4 + mini(3, int(progress * 4.0))
+	elif state == &"run" or moving:
+		index = 8 + int(stride_distance / 50.0) % 4
+	elif state == &"rise":
+		index = 13
+	elif state == &"fall":
+		index = 14
+	elif state == &"land":
+		index = 15
+	else:
+		index = 12
+	_set_frame(index, direction, tint)
+
+# Leading hand in each painted swim frame, relative to its center at swim scale.
+const HUNTER_SWIM_GRIPS := [Vector2(59,0), Vector2(59,2), Vector2(59,6), Vector2(60,8), Vector2(59,1), Vector2(60,4), Vector2(57,7), Vector2(59,8)]
+
+func show_swim(stance: StringName, direction: float, swim_velocity: Vector2, tint: Color, entry: float, sword_equipped: bool, weapon: StringName, progress: float) -> void:
+	var swim_frames := hunter_swim_frames if stance == &"hunter" else steel_swim_frames if stance == &"steel" else royal_swim_frames
+	swim_speed = swim_velocity.length()
+	swim_weapon = weapon
+	weapon_progress = progress
+	var index := int(stroke_phase) % 8
+	var holding_sword := sword_equipped and stance != &"hunter"
+	var pitch := 0.0
+	var reach := 0.0
+	if weapon == &"bow":
+		# The arrow releases on input. Brace, recoil, then float forward again.
+		var recoil := smoothstep(0.0, 0.22, progress) * (1.0 - smoothstep(0.22, 1.0, progress))
+		reach = -8.0 * recoil
+		pitch = -0.12 * recoil
+		index = 2 if progress < 0.42 else 3
+		swim_grip = HUNTER_SWIM_GRIPS[index]
+	elif weapon != &"":
+		var thrust := weapon == &"thrust"
+		var contact := 0.225 if thrust else 0.3125
+		var coil := smoothstep(0.0, contact * 0.75, progress) * (1.0 - smoothstep(contact * 0.75, contact + 0.1, progress))
+		var drive := smoothstep(contact * 0.75, 0.49, progress) * (1.0 - smoothstep(0.55, 1.0, progress))
+		reach = -5.0 * coil + (13.0 if thrust else 7.0) * drive
+		pitch = -0.16 * coil + (0.04 if thrust else 0.22) * drive
+		# Move from guard through the raised blade into contact and follow-through.
+		index = 5 if progress < contact else 6
+		if not thrust and progress >= 0.48:
+			index = 7
+		if progress >= 0.83:
+			index = 4
+	elif holding_sword:
+		index = SWORD_SWIM_STROKE[index]
+	if holding_sword:
+		swim_frames = sword_swim_frames
+		if stance == &"steel":
+			index += 8
+	var frame: AtlasTexture = swim_frames[index]
+	pose_set = &"swim"
+	pose_frame = index
+	facing = direction
+	art.texture = frame
+	art.offset = -frame.region.size * 0.5
+	art.position = Vector2(direction * reach, -65.0 + sin(breath_clock * 2.5) * 1.5)
+	art.scale = Vector2.ONE * (0.43 if holding_sword else 0.30)
+	art.flip_h = direction < 0.0
+	art.rotation = lerpf(-0.94, clampf(swim_velocity.y / 670.0, -0.34, 0.34), smoothstep(0.0, 1.0, entry)) * direction
+	art.rotation += pitch * direction
+	art.modulate = tint
+	art.show()
+	show()
+
 func tick(delta: float, horizontal_speed: float = 0.0) -> void:
 	breath_clock += delta
-	if pose_set == &"locomotion" and locomotion_frame < 8:
+	if pose_set == &"swim":
+		stroke_phase = fmod(stroke_phase + delta * (1.3 + swim_speed / 55.0), 8.0)
+	if (pose_set == &"locomotion" and locomotion_frame < 8) or hunter_equipped:
 		# Eight poses per 200 px travelled: feet follow speed, not a free clock.
 		stride_distance = fmod(stride_distance + absf(horizontal_speed) * delta, 200.0)
 	for trace in traces:
@@ -127,6 +231,7 @@ func _set_frame(index: int, direction: float, tint: Color) -> void:
 	pose_frame = index
 	facing = direction
 	art.texture = frames[index]
+	art.position = Vector2.ZERO
 	art.offset = Vector2(-frames[index].region.size.x / 2.0, -BASELINE)
 	art.flip_h = direction < 0.0
 	art.scale = Vector2.ONE * POSE_SCALE
@@ -149,6 +254,7 @@ func show_locomotion(state: StringName, direction: float, tint: Color, vertical_
 	elif state == &"land":
 		index = 12 if landing_left > 0.09 else 13
 	pose_set = &"locomotion"
+	art.position = Vector2.ZERO
 	locomotion_frame = index
 	facing = direction
 	if index < 8:
@@ -192,10 +298,25 @@ func reset_pose() -> void:
 	locomotion_frame = 0
 	stride_distance = 0.0
 	breath_clock = 0.0
+	stroke_phase = 0.0
 	hide()
 	queue_redraw()
 
+func _draw_swim_bow() -> void:
+	# Work in facing-local space so the off hand, weapon and wake turn together.
+	draw_set_transform(art.position, art.rotation, Vector2(facing, 1))
+	var hand := swim_grip
+	var p := weapon_progress
+	var string_offset := 11.0 * (1.0 - smoothstep(0.0, 0.17, p)) + 2.0 * sin(p * 28.0) * exp(-6.0 * p)
+	var upper := hand + Vector2(-12, -21)
+	var lower := hand + Vector2(-12, 21)
+	draw_polyline(PackedVector2Array([upper, hand + Vector2(-2, -12), hand, hand + Vector2(-2, 12), lower]), Color("ce995a"), 3.0, true)
+	draw_polyline(PackedVector2Array([upper, hand - Vector2(12 + string_offset, 0), lower]), Color("e8dec2"), 1.3, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
 func _draw() -> void:
+	if pose_set == &"swim" and art.visible and swim_weapon == &"bow":
+		_draw_swim_bow()
 	for i in range(1, traces.size()):
 		var fade: float = 1.0 - traces[i - 1].age / 0.085
 		var tip := to_local(traces[i].tip)

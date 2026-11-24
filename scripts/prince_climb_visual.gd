@@ -3,6 +3,7 @@ extends Node2D
 
 const SHEET = preload("res://assets/prince-climb-sheet.png")
 const STEEL_SHEET = preload("res://assets/prince-steel-climb.png")
+const HUNTER_SHEET = preload("res://assets/prince-hunter-climb.png")
 # The painted body is roughly 500 pixels tall; match the 122-pixel prince
 # while allowing for bent legs and the crown in the climbing poses.
 const POSE_SCALE := 0.26
@@ -12,6 +13,7 @@ var art: Sprite2D
 var frames: Array[AtlasTexture] = []
 var royal_frames: Array[AtlasTexture] = []
 var steel_frames: Array[AtlasTexture] = []
+var hunter_frames: Array[AtlasTexture] = []
 var traveled := 0.0
 var direction := -1.0
 var pose_frame := 0
@@ -29,6 +31,7 @@ func _ready() -> void:
 	add_child(art)
 	royal_frames = _make_frames(SHEET)
 	steel_frames = _make_frames(STEEL_SHEET)
+	hunter_frames = _make_frames(HUNTER_SHEET)
 	frames = royal_frames
 	hide()
 

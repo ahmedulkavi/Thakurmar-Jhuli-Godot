@@ -10,7 +10,11 @@ const SWORD_REVEAL_VISUAL = preload("res://scripts/sword_visual.gd")
 const ESSENCE_COIN = preload("res://scenes/essence_coin.tres")
 const ROYAL_STANCE_ICON = preload("res://assets/royal-stance.png")
 const STEEL_STANCE_ICON = preload("res://assets/steel-stance.png")
+const HUNTER_STANCE_ICON = preload("res://assets/hunter-stance.png")
+const SHAKCHUNNI_ESSENCE_ICON = preload("res://assets/essence-of-shakchunni.png")
 const AMULET_TEXTURE = preload("res://assets/healing-amulet.png")
+const BLOOD_AMULET_TEXTURE = preload("res://assets/blood-amulet.png")
+const BLOOD_BLADE_ICON = preload("res://assets/blood-blade-icon.png")
 const FOREST_MUSIC = preload("res://assets/forest-music.ogg")
 const BOSS_MUSIC = preload("res://assets/shakchunni-music-louder.ogg")
 const FOREST_MUSIC_ENABLED := true
@@ -22,6 +26,14 @@ const SOUND_EFFECTS = preload("res://scripts/sound_effects.gd")
 @onready var world_image: TextureRect = $Interface/GameFrame/ViewportContainer
 @onready var world: SubViewport = $Interface/GameFrame/ViewportContainer/World
 var mode: StringName = &"playing"
+var character_menu: Control
+var menu_resume: Button
+var menu_stats: Dictionary = {}
+var menu_items: Dictionary = {}
+var menu_visible_items: Array[Button] = []
+var menu_item_title: Label
+var menu_item_description: Label
+var menu_stance_slots: Dictionary = {}
 var overlay: Control
 var victory_screen: Control
 var victory_tween: Tween
@@ -38,6 +50,7 @@ var combat_panel: Panel
 var health_bar: ProgressBar
 var stamina_bar: ProgressBar
 var magic_bar: ProgressBar
+var boss_title: Label
 var boss_panel: Control
 var boss_health: ProgressBar
 var boss_phase: Label
@@ -54,8 +67,24 @@ var reveal_title: Label
 var reveal_copy: Label
 var reveal_sparks: Array[Label] = []
 var reveal_tween: Tween
+var reveal_returns_to_merchant := false
+var skill_tree: Control
+var skill_buttons: Array[Button] = []
+var skill_costs: Array[Label] = []
+var skill_coins: Array[TextureRect] = []
+var skill_back: Button
+var skill_item_requirement: Label
+var skill_amulet_icon: TextureRect
+var skill_description: Label
+var skill_title: Label
+var skill_selected := 0
+var rest_menu: Control
+var rest_buttons: Array[Button] = []
+var rest_message: Label
 var merchant: Control
 var merchant_buy: Button
+var merchant_healing: Button
+var merchant_hunter: Button
 var merchant_status: Label
 var merchant_close: Button
 var windowed_mode: Window.Mode = Window.MODE_MAXIMIZED
@@ -64,6 +93,9 @@ var boss_music_player: AudioStreamPlayer
 var boss_music_active := false
 var music_tween: Tween
 var sound_effects: Node
+var debug_select_held := false
+var debug_select_toggled_god_mode := false
+var debug_teleport_used := false
 
 func _ready() -> void:
 	_start_music()
@@ -83,8 +115,11 @@ func _ready() -> void:
 	theme = ui_theme
 	_build_chrome()
 	_build_overlay()
+	_build_character_menu()
 	_build_victory_screen()
 	_build_amulet_reveal()
+	_build_rest_menu()
+	_build_skill_tree()
 	_build_merchant()
 	_build_boss_hud()
 	forest.journey_complete.connect(complete_journey)
@@ -95,7 +130,18 @@ func _ready() -> void:
 	forest.player.sound_requested.connect(_play_sound)
 	forest.player.sword_equipped.connect(_on_sword_equipped)
 	forest.player.amulet_equipped.connect(_on_amulet_equipped)
+	forest.player.blood_amulet_collected.connect(_on_blood_amulet_collected)
 	forest.player.died.connect(_on_player_died)
+	forest.player.resting_started.connect(_open_rest_menu)
+	var rival: CharacterBody2D = forest.underwater.boss
+	rival.started.connect(func() -> void:
+		boss_title.text = "The Other Prince"
+		_update_boss_health(rival.health, rival.MAX_HEALTH)
+		_set_boss_music(true)
+		boss_panel.show())
+	rival.health_changed.connect(_update_boss_health)
+	rival.stance_changed.connect(func(title: String) -> void: boss_phase.text = title)
+	rival.ended.connect(_on_boss_reset)
 	forest.boss_arena.encounter_started.connect(_on_boss_started)
 	forest.boss_arena.encounter_reset.connect(_on_boss_reset)
 	forest.boss_arena.boss.health_changed.connect(_update_boss_health)
@@ -104,6 +150,7 @@ func _ready() -> void:
 	forest.essence_changed.connect(_update_essence)
 	forest.essence_discovered.connect(_on_essence_discovered)
 	forest.essence_collected.connect(_on_essence_collected)
+	forest.shakchunni_essence_collected.connect(_on_shakchunni_essence_collected)
 	_update_health(forest.player.health, ForestPrince.MAX_HEALTH)
 	_update_stamina(forest.player.stamina, ForestPrince.MAX_STAMINA)
 	_update_magic(forest.player.magic, ForestPrince.MAX_MAGIC)
@@ -155,6 +202,7 @@ func _set_boss_music(enabled: bool) -> void:
 
 func _on_boss_music_end() -> void:
 	_set_boss_music(false)
+	boss_panel.hide()
 
 func _queue_display_resize() -> void:
 	_resize_display.call_deferred()
@@ -178,29 +226,91 @@ func toggle_fullscreen() -> void:
 		window.mode = Window.MODE_FULLSCREEN
 
 func _input(event: InputEvent) -> void:
+	if event.is_action_released("god_mode"):
+		debug_select_held = false
+		debug_select_toggled_god_mode = false
+		debug_teleport_used = false
+	if mode == &"playing" and not forest.player.is_resting and not event.is_echo():
+		if event.is_action_pressed("god_mode"):
+			debug_select_held = true
+			if Input.is_action_pressed("move_down"):
+				debug_teleport_used = true
+				_debug_teleport_before_boss()
+				get_viewport().set_input_as_handled()
+				return
+			debug_select_toggled_god_mode = true
+		elif event.is_action_pressed("move_down") and debug_select_held and not debug_teleport_used:
+			if debug_select_toggled_god_mode:
+				_toggle_god_mode()
+				debug_select_toggled_god_mode = false
+			debug_teleport_used = true
+			_debug_teleport_before_boss()
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed("god_mode") and not event.is_echo():
-		forest.player.god_mode = not forest.player.god_mode
-		god_mode_indicator.visible = forest.player.god_mode
-		_update_essence(forest.essence)
-		if mode == &"merchant":
-			_refresh_merchant()
-			if merchant_buy.disabled:
-				merchant_close.grab_focus()
+		_toggle_god_mode()
 		get_viewport().set_input_as_handled()
+		return
+	if mode == &"paused" and not event.is_echo():
+		var left := event.is_action_pressed("move_left") or event.is_action_pressed("stance_royal")
+		var right := event.is_action_pressed("move_right") or event.is_action_pressed("stance_steel")
+		var up := event.is_action_pressed("move_up")
+		var down := event.is_action_pressed("move_down")
+		if left or right or up or down:
+			_navigate_inventory(left, right, up, down)
+			get_viewport().set_input_as_handled()
+			return
+	if mode == &"skill_tree":
+		if event.is_action_pressed("pause") and not event.is_echo():
+			_close_skill_tree()
+			get_viewport().set_input_as_handled()
+		elif (event.is_action_pressed("move_up") or event.is_action_pressed("move_down")) and not event.is_echo():
+			var step := -1 if event.is_action_pressed("move_up") else 1
+			var target := skill_selected if skill_back.has_focus() else clampi(skill_selected + step, 0, skill_buttons.size() - 1)
+			skill_buttons[target].grab_focus()
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("move_right") and not event.is_echo():
+			skill_back.grab_focus()
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("move_left") and not event.is_echo():
+			skill_buttons[skill_selected].grab_focus()
+			get_viewport().set_input_as_handled()
+		elif event is InputEventJoypadButton and event.pressed and event.button_index in [JOY_BUTTON_A, JOY_BUTTON_X]:
+			if skill_back.has_focus():
+				_close_skill_tree()
+			else:
+				_purchase_selected_skill()
+			get_viewport().set_input_as_handled()
+		elif event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_B:
+			_close_skill_tree()
+			get_viewport().set_input_as_handled()
 		return
 	if mode == &"merchant":
 		if event.is_action_pressed("pause") and not event.is_echo():
 			_close_merchant()
 			get_viewport().set_input_as_handled()
-		elif (event.is_action_pressed("move_up") or event.is_action_pressed("move_down")) and not event.is_echo():
-			if not merchant_buy.disabled and merchant_close.has_focus():
-				merchant_buy.grab_focus()
-			else:
+		elif (event.is_action_pressed("move_left") or event.is_action_pressed("move_right") or event.is_action_pressed("move_up") or event.is_action_pressed("move_down")) and not event.is_echo():
+			if event.is_action_pressed("move_down"):
 				merchant_close.grab_focus()
+			elif event.is_action_pressed("move_left") and not merchant_buy.disabled:
+				merchant_buy.grab_focus()
+			elif event.is_action_pressed("move_right"):
+				if merchant_healing.has_focus() and not merchant_hunter.disabled:
+					merchant_hunter.grab_focus()
+				elif not merchant_healing.disabled:
+					merchant_healing.grab_focus()
+				elif not merchant_hunter.disabled:
+					merchant_hunter.grab_focus()
+			elif event.is_action_pressed("move_up"):
+				_focus_merchant_item()
 			get_viewport().set_input_as_handled()
 		elif event is InputEventJoypadButton and event.pressed and event.button_index in [JOY_BUTTON_A, JOY_BUTTON_X]:
 			if merchant_buy.has_focus() and not merchant_buy.disabled:
 				_buy_steel_stance()
+			elif merchant_healing.has_focus() and not merchant_healing.disabled:
+				_buy_healing_amulet()
+			elif merchant_hunter.has_focus() and not merchant_hunter.disabled:
+				_buy_hunter_stance()
 			elif merchant_close.has_focus():
 				_close_merchant()
 			get_viewport().set_input_as_handled()
@@ -213,15 +323,24 @@ func _input(event: InputEvent) -> void:
 			_release_actions()
 			_finish_item_reveal()
 		return
-	if mode == &"playing" and forest.player.is_resting:
-		if event.is_action_pressed("move_up") and not event.is_echo():
-			_open_merchant()
+	if mode == &"resting":
+		if event.is_action_pressed("pause") and not event.is_echo():
+			_leave_rest()
 			get_viewport().set_input_as_handled()
-			return
-		if (event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton or event is InputEventScreenTouch) and event.is_pressed() and not event.is_echo():
+		elif (event.is_action_pressed("move_up") or event.is_action_pressed("move_down")) and not event.is_echo():
+			var selected := 0
+			for i in range(rest_buttons.size()):
+				if rest_buttons[i].has_focus():
+					selected = i
+			var step := -1 if event.is_action_pressed("move_up") else 1
+			rest_buttons[posmod(selected + step, rest_buttons.size())].grab_focus()
 			get_viewport().set_input_as_handled()
-			_release_actions()
-			forest.player.stop_resting()
+		elif event is InputEventJoypadButton and event.pressed and event.button_index in [JOY_BUTTON_A, JOY_BUTTON_X]:
+			for button in rest_buttons:
+				if button.has_focus():
+					button.pressed.emit()
+					break
+			get_viewport().set_input_as_handled()
 		return
 	if mode == &"playing" and not forest.player.is_resting and not event.is_echo():
 		if event.is_action_pressed("stance_royal"):
@@ -233,8 +352,13 @@ func _input(event: InputEvent) -> void:
 				forest.player.set_stance(&"steel")
 			get_viewport().set_input_as_handled()
 			return
+		if event.is_action_pressed("stance_hunter"):
+			if forest.has_hunter_stance:
+				forest.player.set_stance(&"hunter")
+			get_viewport().set_input_as_handled()
+			return
 	if mode == &"playing" and event.is_action_pressed("interact") and not event.is_echo():
-		if forest.try_rest() or forest.boss_arena.traverse():
+		if forest.try_rest() or forest.boss_arena.traverse() or forest.underwater.traverse():
 			get_viewport().set_input_as_handled()
 			_release_actions()
 		return
@@ -251,16 +375,47 @@ func _input(event: InputEvent) -> void:
 		toggle_fullscreen()
 		get_viewport().set_input_as_handled()
 
+func _toggle_god_mode() -> void:
+	forest.player.god_mode = not forest.player.god_mode
+	god_mode_indicator.visible = forest.player.god_mode
+	_update_essence(forest.essence)
+	if mode == &"paused":
+		_refresh_character_menu()
+	if mode == &"skill_tree":
+		_refresh_skill_tree()
+	if mode == &"merchant":
+		_refresh_merchant()
+		_focus_merchant_item()
+
+func _debug_teleport_before_boss() -> void:
+	var prince := forest.player
+	var underwater := prince.in_water
+	if prince.is_climbing:
+		prince._stop_climbing()
+	prince.held_by = null
+	if underwater:
+		prince.position = Vector2(forest.underwater.boss.ENTRY_X - 60.0, prince.HALL_FLOOR_Y)
+		prince.in_water = false
+		prince.floor_snap_length = 6.0
+	else:
+		prince.position = Vector2(forest.boss_arena.FOG_X - 60.0, forest.GROUND_Y)
+	prince.velocity = Vector2.ZERO
+	forest.camera.position = Vector2(prince.position.x + 220.0, prince.HALL_FLOOR_Y - 275.0 if underwater else 360.0)
+	forest.camera.reset_smoothing()
+
 func pause_journey() -> void:
 	if mode != &"playing":
 		return
 	mode = &"paused"
-	kicker.text = "T A K E   A   B R E A T H"
-	heading.text = "Paused"
-	copy.text = "The forest will be here when you return."
-	primary.text = "CONTINUE JOURNEY     →"
-	hint.text = "Press Esc to resume"
-	_show_overlay()
+	get_tree().paused = true
+	pause_button.disabled = true
+	_release_actions()
+	_refresh_character_menu()
+	character_menu.show()
+	if menu_visible_items.is_empty():
+		menu_resume.grab_focus()
+	else:
+		menu_visible_items[0].grab_focus()
 
 func complete_journey() -> void:
 	mode = &"complete"
@@ -294,16 +449,17 @@ func _update_stamina(current: float, maximum: float) -> void:
 func _update_magic(current: float, maximum: float) -> void:
 	magic_bar.max_value = maximum
 	magic_bar.value = current
-	magic_bar.visible = forest.player.has_amulet
-	combat_panel.size.y = 58.0 if forest.player.has_amulet else 41.0
+	magic_bar.visible = forest.player.has_amulet or forest.player.stance == &"hunter"
+	combat_panel.size.y = 58.0 if forest.player.has_amulet or forest.player.stance == &"hunter" else 41.0
 	stance_icon.position.y = combat_panel.position.y + combat_panel.size.y + 5.0
 
 func _update_stance(stance: StringName) -> void:
-	stance_icon.texture = STEEL_STANCE_ICON if stance == &"steel" else ROYAL_STANCE_ICON
-	stance_icon.tooltip_text = "Steel Stance" if stance == &"steel" else "Royal Stance"
+	stance_icon.texture = HUNTER_STANCE_ICON if stance == &"hunter" else STEEL_STANCE_ICON if stance == &"steel" else ROYAL_STANCE_ICON
+	stance_icon.tooltip_text = "Hunter Stance" if stance == &"hunter" else "Steel Stance" if stance == &"steel" else "Royal Stance"
+	_update_magic(forest.player.magic, ForestPrince.MAX_MAGIC)
 	if stance_tween and stance_tween.is_valid():
 		stance_tween.kill()
-	stance_icon.modulate = Color(1.7, 1.9, 2.0) if stance == &"steel" else Color(2.0, 1.65, 0.7)
+	stance_icon.modulate = Color(0.75, 2.0, 0.95) if stance == &"hunter" else Color(1.7, 1.9, 2.0) if stance == &"steel" else Color(2.0, 1.65, 0.7)
 	stance_tween = create_tween()
 	stance_tween.tween_property(stance_icon, "modulate", Color.WHITE, 0.6)
 
@@ -317,10 +473,19 @@ func _on_essence_discovered() -> void:
 func _on_essence_collected() -> void:
 	_play_sound(&"essence")
 
+func _on_shakchunni_essence_collected() -> void:
+	_play_sound(&"item")
+	_show_item_reveal(&"shakchunni_essence")
+
 func _on_amulet_equipped() -> void:
 	_play_sound(&"item")
 	_update_magic(forest.player.magic, ForestPrince.MAX_MAGIC)
-	_show_item_reveal(&"amulet")
+	if mode != &"merchant":
+		_show_item_reveal(&"amulet")
+
+func _on_blood_amulet_collected() -> void:
+	_play_sound(&"item")
+	_show_item_reveal(&"blood")
 
 func _on_sword_equipped() -> void:
 	_play_sound(&"item")
@@ -336,6 +501,8 @@ func resume_journey() -> void:
 	if mode != &"paused":
 		return
 	mode = &"playing"
+	character_menu.hide()
+	menu_resume.release_focus()
 	overlay.hide()
 	primary.release_focus()
 	pause_button.disabled = false
@@ -349,6 +516,9 @@ func restart_journey() -> void:
 	amulet_reveal.hide()
 	amulet_reveal.modulate = Color.WHITE
 	merchant.hide()
+	character_menu.hide()
+	skill_tree.hide()
+	rest_menu.hide()
 	if victory_tween and victory_tween.is_valid():
 		victory_tween.kill()
 	victory_screen.hide()
@@ -374,10 +544,10 @@ func _build_boss_hud() -> void:
 	boss_panel.size = Vector2(900, 80)
 	boss_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	frame.add_child(boss_panel)
-	var title := _label(boss_panel, "SHAKCHUNNI, REAPER OF FOREST", Vector2(0, 0), 23, Color("e4d4c7"), serif)
-	title.size = Vector2(900, 32)
-	title.add_theme_constant_override("outline_size", 5)
-	title.add_theme_color_override("font_outline_color", Color("120e1b"))
+	boss_title = _label(boss_panel, "SHAKCHUNNI, REAPER OF FOREST", Vector2(0, 0), 23, Color("e4d4c7"), serif)
+	boss_title.size = Vector2(900, 32)
+	boss_title.add_theme_constant_override("outline_size", 5)
+	boss_title.add_theme_color_override("font_outline_color", Color("120e1b"))
 	boss_health = ProgressBar.new()
 	boss_health.name = "HealthBar"
 	boss_health.position = Vector2(0, 38)
@@ -394,6 +564,7 @@ func _build_boss_hud() -> void:
 	boss_panel.hide()
 
 func _on_boss_started() -> void:
+	boss_title.text = "SHAKCHUNNI, REAPER OF FOREST"
 	_set_boss_music(true)
 	boss_panel.show()
 	_update_boss_health(forest.boss_arena.boss.health, forest.boss_arena.boss.MAX_HEALTH)
@@ -415,6 +586,201 @@ func _update_boss_phase(phase: StringName) -> void:
 	else:
 		boss_phase.text = ""
 
+func _build_rest_menu() -> void:
+	rest_menu = Control.new()
+	rest_menu.name = "RestMenu"
+	rest_menu.size = Vector2(1280, 720)
+	rest_menu.z_index = 24
+	rest_menu.mouse_filter = Control.MOUSE_FILTER_STOP
+	frame.add_child(rest_menu)
+	var shade := ColorRect.new()
+	shade.size = rest_menu.size
+	shade.color = Color(0.01, 0.025, 0.025, 0.35)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rest_menu.add_child(shade)
+	var panel := Panel.new()
+	panel.position = Vector2(55, 145)
+	panel.size = Vector2(400, 430)
+	var style := _box(Color(0.025, 0.055, 0.05, 0.94), Color("8c7c55"), 3)
+	style.shadow_color = Color(0, 0, 0, 0.45)
+	style.shadow_size = 24
+	panel.add_theme_stylebox_override("panel", style)
+	rest_menu.add_child(panel)
+	_label(panel, "THE FOUNTAIN", Vector2(32, 27), 12, GOLD)
+	_label(panel, "A moment of rest", Vector2(32, 53), 27, PAPER, serif)
+	var descriptions := ["CONTEMPLATE", "MEDITATE", "LEAVE"]
+	for i in range(descriptions.size()):
+		var button := _button(descriptions[i], Vector2(32, 125 + i * 59), Vector2(336, 48))
+		button.name = descriptions[i].capitalize()
+		panel.add_child(button)
+		rest_buttons.append(button)
+	rest_buttons[0].pressed.connect(_open_merchant)
+	rest_buttons[1].pressed.connect(_meditate)
+	rest_buttons[2].pressed.connect(_leave_rest)
+	rest_message = _label(panel, "", Vector2(32, 325), 14, MUTED, italic)
+	rest_message.size = Vector2(336, 55)
+	rest_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rest_menu.hide()
+
+func _open_rest_menu() -> void:
+	if mode != &"playing":
+		return
+	mode = &"resting"
+	pause_button.disabled = true
+	_release_actions()
+	rest_message.text = ""
+	rest_menu.show()
+	rest_buttons[0].grab_focus()
+
+func _meditate() -> void:
+	if mode != &"resting":
+		return
+	rest_menu.hide()
+	mode = &"skill_tree"
+	get_tree().paused = true
+	_release_actions()
+	skill_tree.show()
+	_refresh_skill_tree()
+	skill_buttons[0].grab_focus()
+
+func _leave_rest() -> void:
+	if mode != &"resting":
+		return
+	rest_menu.hide()
+	for button in rest_buttons:
+		button.release_focus()
+	forest.player.stop_resting()
+	mode = &"playing"
+	pause_button.disabled = false
+	_release_actions()
+	get_tree().paused = false
+
+func _build_skill_tree() -> void:
+	skill_tree = Control.new()
+	skill_tree.name = "SkillTree"
+	skill_tree.size = Vector2(1280, 720)
+	skill_tree.z_index = 25
+	skill_tree.mouse_filter = Control.MOUSE_FILTER_STOP
+	frame.add_child(skill_tree)
+	var shade := ColorRect.new()
+	shade.size = skill_tree.size
+	shade.color = Color(0.01, 0.025, 0.025, 0.88)
+	skill_tree.add_child(shade)
+	var panel := Panel.new()
+	panel.name = "Panel"
+	panel.position = Vector2(120, 80)
+	panel.size = Vector2(1040, 560)
+	panel.add_theme_stylebox_override("panel", _box(Color("102b2b"), Color("928661"), 5))
+	skill_tree.add_child(panel)
+	_label(panel, "ROYAL STANCE", Vector2(42, 25), 12, GOLD)
+	_label(panel, "The Prince's Path", Vector2(42, 48), 30, PAPER, serif)
+	_label(panel, "Choose a skill to learn more", Vector2(42, 91), 14, MUTED, italic)
+	for i in range(2):
+		var link := ColorRect.new()
+		link.name = "Connection%d" % i
+		link.position = Vector2(245, 230 + i * 132)
+		link.size = Vector2(2, 26)
+		link.color = GOLD
+		link.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(link)
+	var names := ["Royal Stance", "Royal Stance II", "Blood Blade"]
+	for i in range(3):
+		var node := _button("", Vector2(80, 130 + i * 132), Vector2(330, 100))
+		node.name = "Skill%d" % i
+		panel.add_child(node)
+		skill_buttons.append(node)
+		var art := TextureRect.new()
+		art.name = "Icon"
+		art.texture = BLOOD_BLADE_ICON if i == 2 else ROYAL_STANCE_ICON
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		node.add_child(art)
+		art.position = Vector2(12, 10)
+		art.size = Vector2(80, 80)
+		var name_label := _label(node, names[i], Vector2(105, 10), 18, PAPER, serif)
+		name_label.size = Vector2(215, 28)
+		var coin := TextureRect.new()
+		coin.name = "EssenceIcon"
+		coin.texture = ESSENCE_COIN
+		coin.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		coin.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		node.add_child(coin)
+		coin.position = Vector2(102, 43)
+		coin.size = Vector2(24, 24)
+		skill_coins.append(coin)
+		var price := _label(node, "", Vector2(130, 45), 15, GOLD)
+		price.name = "Cost"
+		price.size = Vector2(190, 22)
+		skill_costs.append(price)
+		if i == 2:
+			skill_amulet_icon = TextureRect.new()
+			skill_amulet_icon.name = "AmuletIcon"
+			skill_amulet_icon.texture = BLOOD_AMULET_TEXTURE
+			skill_amulet_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			skill_amulet_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			skill_amulet_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			node.add_child(skill_amulet_icon)
+			skill_amulet_icon.position = Vector2(102, 70)
+			skill_amulet_icon.size = Vector2(24, 24)
+			skill_item_requirement = _label(node, "BLOOD AMULET", Vector2(130, 72), 12, PAPER)
+			skill_item_requirement.name = "ItemRequirement"
+			skill_item_requirement.size = Vector2(190, 20)
+		var index := i
+		node.focus_entered.connect(func() -> void: _select_skill(index))
+		node.mouse_entered.connect(func() -> void: node.grab_focus())
+		node.pressed.connect(_purchase_selected_skill)
+	skill_title = _label(panel, "", Vector2(500, 160), 23, GOLD, serif)
+	skill_description = _label(panel, "", Vector2(500, 205), 16, PAPER, italic)
+	skill_description.size = Vector2(430, 150)
+	skill_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	skill_back = _button("RETURN TO FOUNTAIN", Vector2(730, 492), Vector2(240, 42))
+	skill_back.name = "Back"
+	skill_back.pressed.connect(_close_skill_tree)
+	panel.add_child(skill_back)
+	skill_tree.hide()
+
+func _select_skill(index: int) -> void:
+	skill_selected = index
+	var titles := ["Royal Stance", "Royal Stance Level 2", "Blood Blade"]
+	var descriptions := ["The prince's balanced sword stance.", "A deeper mastery of the Royal Stance.", "Sacrifices health at a steady rate for increased range."]
+	skill_title.text = titles[index]
+	skill_description.text = descriptions[index]
+	if index == 2 and not forest.royal_level_2_unlocked:
+		skill_description.text += "  Requires Royal Stance Level 2."
+
+func _refresh_skill_tree() -> void:
+	var owned := [true, forest.royal_level_2_unlocked, forest.blood_blade_unlocked]
+	var prices := [0, forest.ROYAL_LEVEL_2_PRICE, forest.BLOOD_BLADE_PRICE]
+	for i in range(3):
+		skill_buttons[i].modulate = Color(1.0, 0.88, 0.55) if owned[i] else Color.WHITE
+		skill_costs[i].text = "PURCHASED" if owned[i] else "%d ESSENCE" % prices[i]
+		skill_coins[i].visible = not owned[i]
+		skill_costs[i].position.x = 105 if owned[i] else 130
+		var affordable: bool = forest.player.god_mode or forest.essence >= prices[i]
+		skill_costs[i].add_theme_color_override("font_color", GOLD if owned[i] or affordable else Color("f07373"))
+	skill_item_requirement.visible = not forest.blood_blade_unlocked
+	skill_amulet_icon.visible = not forest.blood_blade_unlocked
+	skill_item_requirement.add_theme_color_override("font_color", PAPER if forest.player.has_blood_amulet else Color("f07373"))
+	_select_skill(skill_selected)
+
+func _purchase_selected_skill() -> void:
+	var ids: Array[StringName] = [&"royal", &"royal_2", &"blood_blade"]
+	if forest.purchase_skill(ids[skill_selected]):
+		_play_sound(&"item")
+		_refresh_skill_tree()
+
+func _close_skill_tree() -> void:
+	if mode != &"skill_tree":
+		return
+	skill_tree.hide()
+	mode = &"resting"
+	get_tree().paused = false
+	rest_menu.show()
+	rest_buttons[1].grab_focus()
+	_release_actions()
+
 func _build_merchant() -> void:
 	merchant = Control.new()
 	merchant.name = "Merchant"
@@ -428,107 +794,158 @@ func _build_merchant() -> void:
 	merchant.add_child(shade)
 	var panel := Panel.new()
 	panel.name = "Panel"
-	panel.position = Vector2(330, 105)
-	panel.size = Vector2(620, 510)
+	panel.position = Vector2(330, 25)
+	panel.size = Vector2(620, 650)
 	panel.add_theme_stylebox_override("panel", _box(Color("102b2b"), Color("928661"), 5))
 	merchant.add_child(panel)
-	var title := _label(panel, "The Fountain Merchant", Vector2(40, 25), 30, PAPER, serif)
-	title.size.x = 540
-	var subtitle := _label(panel, "A quiet exchange for a wandering prince", Vector2(40, 70), 15, MUTED, italic)
-	subtitle.size.x = 540
-	var art := TextureRect.new()
-	art.name = "SteelStanceIcon"
-	art.texture = load("res://assets/steel-stance.png")
-	art.position = Vector2(70, 155)
-	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	panel.add_child(art)
-	art.size = Vector2(112, 112)
-	_label(panel, "Steel Stance", Vector2(255, 130), 25, GOLD, serif)
-	_label(panel, "A defensive stance for the prince.", Vector2(255, 174), 15, PAPER)
-	_label(panel, "Defend and counter incoming attacks", Vector2(255, 205), 14, MUTED, italic)
-	_label(panel, "200 ESSENCE", Vector2(255, 260), 17, Color("b6e2ed"))
-	merchant_status = _label(panel, "", Vector2(40, 325), 15, MUTED)
-	merchant_status.size.x = 540
-	merchant_buy = _button("BUY STEEL STANCE?   200 ESSENCE", Vector2(40, 360), Vector2(540, 50), true)
+	_label(panel, "The Fountain Merchant", Vector2(40, 25), 30, PAPER, serif)
+	_label(panel, "A quiet exchange for a wandering prince", Vector2(40, 70), 15, MUTED, italic)
+	merchant_buy = _merchant_item(panel, "SteelStance", "Steel Stance", STEEL_STANCE_ICON, forest.STEEL_STANCE_PRICE, Vector2(75, 95))
 	merchant_buy.pressed.connect(_buy_steel_stance)
-	panel.add_child(merchant_buy)
-	merchant_close = _button("LEAVE MERCHANT", Vector2(40, 425), Vector2(540, 44))
+	merchant_healing = _merchant_item(panel, "HealingAmulet", "Healing Amulet", AMULET_TEXTURE, forest.HEALING_AMULET_PRICE, Vector2(345, 95))
+	merchant_healing.pressed.connect(_buy_healing_amulet)
+	merchant_hunter = _merchant_item(panel, "HunterStance", "Hunter Stance", HUNTER_STANCE_ICON, forest.HUNTER_STANCE_PRICE, Vector2(210, 305))
+	merchant_hunter.pressed.connect(_buy_hunter_stance)
+	merchant_hunter.tooltip_text = "Hunter Stance"
+	var hunter_requirement := TextureRect.new()
+	hunter_requirement.name = "ShakchunniEssenceIcon"
+	hunter_requirement.texture = SHAKCHUNNI_ESSENCE_ICON
+	hunter_requirement.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hunter_requirement.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hunter_requirement.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	hunter_requirement.position = Vector2(11, 163)
+	hunter_requirement.size = Vector2(34, 34)
+	hunter_requirement.tooltip_text = "Essence of Shakchunni required"
+	merchant_hunter.add_child(hunter_requirement)
+	var hunter_coin := merchant_hunter.get_node("EssenceIcon") as TextureRect
+	hunter_coin.position = Vector2(56, 168)
+	hunter_coin.size = Vector2(25, 25)
+	var hunter_cost := merchant_hunter.get_node("CostLabel") as Label
+	hunter_cost.text = "%d Essence" % forest.HUNTER_STANCE_PRICE
+	hunter_cost.position = Vector2(87, 169)
+	hunter_cost.size = Vector2(110, 25)
+	hunter_cost.add_theme_font_size_override("font_size", 14)
+	merchant_status = _label(panel, "", Vector2(40, 515), 15, MUTED)
+	merchant_status.size.x = 540
+	merchant_close = _button("LEAVE MERCHANT", Vector2(40, 555), Vector2(540, 44))
 	merchant_close.pressed.connect(_close_merchant)
 	panel.add_child(merchant_close)
 	merchant.hide()
 
+func _merchant_item(parent: Control, item_name: String, title: String, texture: Texture2D, cost: int, at: Vector2) -> Button:
+	var item := _button("", at, Vector2(200, 200))
+	item.name = item_name
+	parent.add_child(item)
+	var art := TextureRect.new()
+	art.name = "Icon"
+	art.texture = texture
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	item.add_child(art)
+	art.position = Vector2(40, 12)
+	art.size = Vector2(120, 120)
+	var name_label := _label(item, title, Vector2(0, 137), 18, PAPER, serif)
+	name_label.size = Vector2(200, 28)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var coin := TextureRect.new()
+	coin.name = "EssenceIcon"
+	coin.texture = ESSENCE_COIN
+	coin.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	coin.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	item.add_child(coin)
+	coin.position = Vector2(58, 166)
+	coin.size = Vector2(29, 29)
+	var cost_label := _label(item, str(cost), Vector2(91, 170), 16, GOLD)
+	cost_label.name = "CostLabel"
+	return item
+
+func _focus_merchant_item() -> void:
+	if not merchant_buy.disabled:
+		merchant_buy.grab_focus()
+	elif not merchant_healing.disabled:
+		merchant_healing.grab_focus()
+	elif not merchant_hunter.disabled:
+		merchant_hunter.grab_focus()
+	else:
+		merchant_close.grab_focus()
+
 func _open_merchant() -> void:
-	if mode != &"playing" or not forest.player.is_resting:
+	if mode != &"resting" or not forest.player.is_resting:
 		return
+	rest_menu.hide()
 	mode = &"merchant"
 	get_tree().paused = true
 	pause_button.disabled = true
 	_release_actions()
 	_refresh_merchant()
 	merchant.show()
-	if merchant_buy.disabled:
-		merchant_close.grab_focus()
-	else:
-		merchant_buy.grab_focus()
+	_focus_merchant_item()
 
 func _refresh_merchant() -> void:
 	merchant_buy.disabled = forest.has_steel_stance or (not forest.player.god_mode and forest.essence < forest.STEEL_STANCE_PRICE)
-	if forest.has_steel_stance:
-		merchant_status.text = "Purchased. Use Right Arrow / D-pad Right to equip."
-		merchant_buy.text = "PURCHASED"
-	elif not forest.player.god_mode and forest.essence < forest.STEEL_STANCE_PRICE:
-		merchant_status.text = "You have %d Essence ? 200 required" % forest.essence
-		merchant_buy.text = "NOT ENOUGH ESSENCE"
-	else:
-		merchant_status.text = "Unlimited Essence (God Mode)" if forest.player.god_mode else "You have %d Essence" % forest.essence
-		merchant_buy.text = "BUY STEEL STANCE?   200 ESSENCE"
+	merchant_healing.disabled = forest.player.has_amulet or (not forest.player.god_mode and forest.essence < forest.HEALING_AMULET_PRICE)
+	merchant_hunter.disabled = not forest.has_shakchunni_essence or forest.has_hunter_stance or (not forest.player.god_mode and forest.essence < forest.HUNTER_STANCE_PRICE)
+	merchant_buy.modulate = Color(0.4, 0.4, 0.4) if merchant_buy.disabled else Color.WHITE
+	merchant_healing.modulate = Color(0.4, 0.4, 0.4) if merchant_healing.disabled else Color.WHITE
+	merchant_hunter.modulate = Color(0.4, 0.4, 0.4) if merchant_hunter.disabled else Color.WHITE
+	merchant_status.text = "Unlimited Essence (God Mode)" if forest.player.god_mode else "You have %d Essence" % forest.essence
 
 func _buy_steel_stance() -> void:
 	if forest.purchase_steel_stance():
 		_play_sound(&"item")
 		_refresh_merchant()
-		merchant_close.grab_focus()
+		_show_item_reveal(&"steel")
+
+func _buy_healing_amulet() -> void:
+	if forest.purchase_healing_amulet():
+		_refresh_merchant()
+		_show_item_reveal(&"amulet")
+
+func _buy_hunter_stance() -> void:
+	if forest.purchase_hunter_stance():
+		_play_sound(&"item")
+		_refresh_merchant()
+		_show_item_reveal(&"hunter")
 
 func _close_merchant() -> void:
 	if mode != &"merchant":
 		return
 	merchant.hide()
 	merchant_buy.release_focus()
+	merchant_healing.release_focus()
+	merchant_hunter.release_focus()
 	merchant_close.release_focus()
-	mode = &"playing"
-	pause_button.disabled = false
+	mode = &"resting"
+	rest_menu.show()
+	rest_buttons[0].grab_focus()
 	_release_actions()
 	get_tree().paused = false
 
 func _build_chrome() -> void:
-	_label(interface, "A  L I T T L E  J O U R N E Y  T H R O U G H  T H E  W O O D S", Vector2(40, 28), 11, MUTED)
-	var title := _label(interface, "The Prince’s", Vector2(40, 49), 36, PAPER, serif)
-	_label(interface, "Forest", Vector2(48 + title.get_minimum_size().x, 49), 36, Color("c8ac70"), italic)
-	_label(interface, "01", Vector2(1100, 61), 25, Color("c1a76f"), italic)
-	_label(interface, "THE FOREST PATH", Vector2(1145, 72), 11, MUTED)
 	var border := Panel.new()
 	border.position = Vector2(-1, -1)
 	border.size = Vector2(1282, 722)
 	border.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	border.add_theme_stylebox_override("panel", _box(Color.TRANSPARENT, Color("567064")))
 	frame.add_child(border)
+	# Keep the former decorative emblem available without showing it in the HUD.
 	var emblem := Panel.new()
+	emblem.name = "HiddenHudEmblem"
 	emblem.position = Vector2(30, 28)
 	emblem.size = Vector2(36, 36)
 	emblem.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	emblem.add_theme_stylebox_override("panel", _box(Color(0.04, 0.10, 0.1, 0.4), Color("b5a16d"), 18))
 	frame.add_child(emblem)
-	_label(emblem, "✦", Vector2(9, 4), 22, GOLD)
-	var path_label := _label(frame, "T H E  F O R E S T  P A T H", Vector2(80, 28), 11, PAPER)
-	path_label.add_theme_constant_override("outline_size", 4)
-	path_label.add_theme_color_override("font_outline_color", Color("102526"))
-	_label(frame, "Follow the light", Vector2(80, 47), 15, Color("d9dcc8"), italic)
+	_label(emblem, "?", Vector2(9, 4), 22, GOLD)
+	emblem.hide()
 	pause_button = _button("II   PAUSE", Vector2(1100, 27), Vector2(150, 37))
 	pause_button.tooltip_text = "Pause the journey (Esc / controller Start)"
 	pause_button.pressed.connect(pause_journey)
 	frame.add_child(pause_button)
+	pause_button.hide()
 	god_mode_indicator = _label(frame, "GOD MODE", Vector2(270, 32), 14, GOLD)
 	god_mode_indicator.add_theme_constant_override("outline_size", 4)
 	god_mode_indicator.add_theme_color_override("font_outline_color", Color("102526"))
@@ -536,7 +953,7 @@ func _build_chrome() -> void:
 	_build_combat_hud()
 	_build_essence_hud()
 	var x: float = 40
-	for group in [["A", "D", "MOVE"], ["←", "→", "STANCE"], ["SPACE", "JUMP"], ["J / X", "ATTACK"], ["H", "HEAL"], ["ESC", "PAUSE"], ["R", "RESTART"]]:
+	for group in [["A", "D", "MOVE"], ["←", "→", "STANCE"], ["SPACE", "JUMP"], ["J / X", "ATTACK"], ["H", "HEAL"], ["R", "RESTART"]]:
 		for token: String in group:
 			if token in ["MOVE", "STANCE", "JUMP", "ATTACK", "HEAL", "PAUSE", "RESTART"]:
 				var name_label := _label(interface, token, Vector2(x + 3, 877), 10, MUTED)
@@ -557,13 +974,14 @@ func _build_chrome() -> void:
 				key_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 				key_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 				x += width + 6
-	_label(interface, "Find your way to the light", Vector2(1093, 874), 15, Color("8aa59a"), italic)
-	_label(interface, "✦", Vector2(1302, 872), 20, GOLD)
+	var bottom_star := _label(interface, "?", Vector2(1302, 872), 20, GOLD)
+	bottom_star.name = "HiddenBottomStar"
+	bottom_star.hide()
 
 func _build_essence_hud() -> void:
 	var panel := Panel.new()
 	panel.name = "EssenceCounter"
-	panel.position = Vector2(1130, 76)
+	panel.position = Vector2(1130, 20)
 	panel.size = Vector2(120, 44)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_theme_stylebox_override("panel", _box(Color(0.035, 0.09, 0.10, 0.86), Color("526d73"), 5))
@@ -586,7 +1004,7 @@ func _build_essence_hud() -> void:
 
 func _build_combat_hud() -> void:
 	combat_panel = Panel.new()
-	combat_panel.position = Vector2(28, 87)
+	combat_panel.position = Vector2(28, 20)
 	combat_panel.size = Vector2(206, 41)
 	combat_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	combat_panel.add_theme_stylebox_override("panel", _box(Color(0.035, 0.09, 0.08, 0.86), Color("52695a"), 5))
@@ -666,9 +1084,6 @@ func _build_amulet_reveal() -> void:
 	reveal_copy = _label(amulet_reveal, "Allows the user the magic of healing.", Vector2(240, 446), 18, Color("a8dfed"), italic)
 	reveal_copy.size = Vector2(800, 36)
 	reveal_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var skip_hint := _label(amulet_reveal, "PRESS ANY KEY OR BUTTON, CLICK OR TAP TO SKIP", Vector2(240, 510), 13, Color("a8dfed"), sans)
-	skip_hint.size = Vector2(800, 28)
-	skip_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	for i in range(14):
 		var spark := _label(amulet_reveal, "✦", Vector2(632, 220), 18 + i % 3 * 4, Color("b9f4ff"))
 		spark.pivot_offset = Vector2(10, 10)
@@ -676,12 +1091,18 @@ func _build_amulet_reveal() -> void:
 	amulet_reveal.hide()
 
 func _show_item_reveal(item: StringName) -> void:
+	reveal_returns_to_merchant = mode == &"merchant"
 	mode = &"item_reveal"
 	get_tree().paused = true
 	pause_button.disabled = true
 	_release_actions()
 	amulet_reveal.modulate = Color.WHITE
 	reveal_shade.color.a = 0.0
+	var blood_reveal := item == &"blood"
+	var green_reveal := item in [&"hunter", &"shakchunni_essence"]
+	reveal_halo.modulate = Color(0.38, 1.0, 0.55) if green_reveal else Color(1.0, 0.35, 0.35) if blood_reveal else Color.WHITE
+	reveal_title.add_theme_color_override("font_color", Color("c8ffd3") if green_reveal else Color("ffd4c7") if blood_reveal else Color("d8f5ff"))
+	reveal_copy.add_theme_color_override("font_color", Color("a6e8b4") if green_reveal else Color("f5b8ad") if blood_reveal else Color("a8dfed"))
 	var sword_reveal := item == &"sword"
 	reveal_art.visible = not sword_reveal
 	reveal_sword.visible = sword_reveal
@@ -689,6 +1110,22 @@ func _show_item_reveal(item: StringName) -> void:
 		&"sword":
 			reveal_title.text = "FOREST BLADE AWAKENED"
 			reveal_copy.text = "Allows the user to wield the Forest Blade."
+		&"steel":
+			reveal_art.texture = STEEL_STANCE_ICON
+			reveal_title.text = "STEEL STANCE AWAKENED"
+			reveal_copy.text = "A defensive stance for blocking and countering attacks."
+		&"hunter":
+			reveal_art.texture = HUNTER_STANCE_ICON
+			reveal_title.text = "HUNTER STANCE AWAKENED"
+			reveal_copy.text = "Hunt from afar with spirit arrows and evade danger with a swift roll."
+		&"shakchunni_essence":
+			reveal_art.texture = SHAKCHUNNI_ESSENCE_ICON
+			reveal_title.text = "ESSENCE OF SHAKCHUNNI"
+			reveal_copy.text = "When the hunter becomes prey, an apex hunter is born."
+		&"blood":
+			reveal_art.texture = BLOOD_AMULET_TEXTURE
+			reveal_title.text = "BLOOD AMULET DISCOVERED"
+			reveal_copy.text = "An ancient amulet pulsing with a mysterious crimson power."
 		&"essence":
 			reveal_art.texture = ESSENCE_COIN
 			reveal_title.text = "ESSENCE DISCOVERED"
@@ -718,15 +1155,14 @@ func _show_item_reveal(item: StringName) -> void:
 	reveal_tween.parallel().tween_property(item_art, "rotation", 0.0, 0.72).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	reveal_tween.parallel().tween_property(reveal_halo, "modulate:a", 1.0, 0.35)
 	reveal_tween.parallel().tween_property(reveal_halo, "scale", Vector2.ONE, 0.82).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	reveal_tween.parallel().tween_property(reveal_title, "modulate:a", 1.0, 0.35).set_delay(0.45)
+	reveal_tween.parallel().tween_property(reveal_copy, "modulate:a", 1.0, 0.45).set_delay(0.45)
 	for i in range(reveal_sparks.size()):
 		var angle := float(i) * TAU / float(reveal_sparks.size())
 		var distance := 155.0 + float(i % 3) * 28.0
 		var destination := Vector2(632, 220) + Vector2(cos(angle), sin(angle)) * distance
 		reveal_tween.parallel().tween_property(reveal_sparks[i], "position", destination, 0.9).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		reveal_tween.parallel().tween_property(reveal_sparks[i], "modulate:a", 0.9, 0.32)
-	reveal_tween.tween_interval(0.12)
-	reveal_tween.tween_property(reveal_title, "modulate:a", 1.0, 0.35)
-	reveal_tween.parallel().tween_property(reveal_copy, "modulate:a", 1.0, 0.45)
 	reveal_tween.tween_interval(1.65)
 	reveal_tween.tween_property(amulet_reveal, "modulate:a", 0.0, 0.35)
 	reveal_tween.tween_callback(_finish_item_reveal)
@@ -735,9 +1171,15 @@ func _finish_item_reveal() -> void:
 	amulet_reveal.hide()
 	amulet_reveal.modulate = Color.WHITE
 	if mode == &"item_reveal":
-		mode = &"playing"
-		pause_button.disabled = false
-		get_tree().paused = false
+		if reveal_returns_to_merchant:
+			mode = &"merchant"
+			_refresh_merchant()
+			_focus_merchant_item()
+		else:
+			mode = &"playing"
+			pause_button.disabled = false
+			get_tree().paused = false
+	reveal_returns_to_merchant = false
 
 func _build_victory_screen() -> void:
 	victory_screen = Control.new()
@@ -778,6 +1220,188 @@ void fragment() {
 	restart_hint.size.x = 400
 	restart_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	victory_screen.hide()
+
+func _build_character_menu() -> void:
+	character_menu = Control.new()
+	character_menu.name = "CharacterMenu"
+	character_menu.size = Vector2(1280, 720)
+	character_menu.z_index = 20
+	character_menu.mouse_filter = Control.MOUSE_FILTER_STOP
+	frame.add_child(character_menu)
+	var shade := ColorRect.new()
+	shade.size = character_menu.size
+	shade.color = Color(0.012, 0.035, 0.03, 0.88)
+	character_menu.add_child(shade)
+	var panel := Panel.new()
+	panel.name = "Panel"
+	panel.position = Vector2(70, 55)
+	panel.size = Vector2(1140, 610)
+	var panel_style := _box(Color("102b2b"), Color("928661"), 5)
+	panel_style.shadow_color = Color(0, 0, 0, 0.4)
+	panel_style.shadow_size = 25
+	panel.add_theme_stylebox_override("panel", panel_style)
+	character_menu.add_child(panel)
+	_label(panel, "THE PRINCE", Vector2(34, 22), 12, GOLD)
+	_label(panel, "Journey paused", Vector2(34, 46), 30, PAPER, serif)
+	_label(panel, "INVENTORY", Vector2(36, 112), 13, GOLD)
+	_label(panel, "ATTRIBUTES", Vector2(405, 112), 13, GOLD)
+	_label(panel, "STANCE DIRECTIONS", Vector2(760, 112), 13, GOLD)
+	_menu_inventory_item(panel, "sword", "Forest Blade", null)
+	_menu_inventory_item(panel, "healing", "Healing Amulet", AMULET_TEXTURE)
+	_menu_inventory_item(panel, "blood", "Blood Amulet", BLOOD_AMULET_TEXTURE)
+	_menu_inventory_item(panel, "essence", "Essence", ESSENCE_COIN)
+	_menu_inventory_item(panel, "shakchunni_essence", "Essence of Shakchunni", SHAKCHUNNI_ESSENCE_ICON)
+	menu_item_title = _label(panel, "Inventory empty", Vector2(36, 500), 19, GOLD, serif)
+	menu_item_title.size = Vector2(325, 30)
+	menu_item_description = _label(panel, "Collect items on your journey.", Vector2(36, 530), 14, PAPER, italic)
+	menu_item_description.size = Vector2(325, 80)
+	menu_item_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var stat_names := ["Health", "Stamina", "Magic", "Attack", "Counter", "Defense"]
+	for i in range(stat_names.size()):
+		var y := 154.0 + i * 50.0
+		_label(panel, stat_names[i], Vector2(405, y), 17, PAPER)
+		var value := _label(panel, "", Vector2(555, y), 17, GOLD)
+		value.size.x = 145
+		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		menu_stats[stat_names[i]] = value
+	_menu_direction_slot(panel, "up", "UP", Vector2(870, 160), HUNTER_STANCE_ICON)
+	_menu_direction_slot(panel, "left", "LEFT", Vector2(755, 275), ROYAL_STANCE_ICON)
+	_menu_direction_slot(panel, "right", "RIGHT", Vector2(985, 275), STEEL_STANCE_ICON)
+	_menu_direction_slot(panel, "down", "DOWN", Vector2(870, 390), null)
+	menu_resume = _button("CONTINUE JOURNEY", Vector2(730, 532), Vector2(365, 46), true)
+	menu_resume.name = "Continue"
+	menu_resume.pressed.connect(resume_journey)
+	panel.add_child(menu_resume)
+	_label(panel, "ESC / START  TO RETURN", Vector2(36, 550), 12, MUTED)
+	character_menu.hide()
+
+func _menu_inventory_item(parent: Control, key: String, item_name: String, texture: Texture2D) -> void:
+	var item := _button("", Vector2.ZERO, Vector2(120, 105))
+	item.name = "Inventory_" + key
+	item.tooltip_text = item_name
+	parent.add_child(item)
+	if texture:
+		var icon := TextureRect.new()
+		icon.name = "Icon"
+		icon.texture = texture
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		item.add_child(icon)
+		icon.position = Vector2(20, 8)
+		icon.size = Vector2(80, 80)
+	else:
+		var blade := Node2D.new()
+		blade.name = "Icon"
+		blade.set_script(SWORD_REVEAL_VISUAL)
+		blade.position = Vector2(60, 78)
+		blade.scale = Vector2.ONE * 1.25
+		item.add_child(blade)
+	item.focus_entered.connect(func() -> void: _describe_inventory_item(key))
+	item.mouse_entered.connect(func() -> void: item.grab_focus())
+	menu_items[key] = item
+
+func _describe_inventory_item(key: String) -> void:
+	match key:
+		"sword":
+			menu_item_title.text = "Forest Blade"
+			menu_item_description.text = "A blade for fighting the spirits of the forest."
+		"healing":
+			menu_item_title.text = "Healing Amulet"
+			menu_item_description.text = "Enables focused healing using magic earned from sword hits."
+		"blood":
+			menu_item_title.text = "Blood Amulet"
+			menu_item_description.text = "An ancient amulet pulsing with a mysterious crimson power."
+		"essence":
+			menu_item_title.text = "Essence"
+			menu_item_description.text = "The spirits of fallen foes, used to purchase items and skills.\nHeld: %s" % ("Unlimited" if forest.player.god_mode else str(forest.essence))
+		"shakchunni_essence":
+			menu_item_title.text = "Essence of Shakchunni"
+			menu_item_description.text = "A unique spirit required to buy Hunter Stance."
+
+func _navigate_inventory(left: bool, right: bool, up: bool, down: bool) -> void:
+	if menu_visible_items.is_empty():
+		menu_resume.grab_focus()
+		return
+	var index := -1
+	for i in range(menu_visible_items.size()):
+		if menu_visible_items[i].has_focus():
+			index = i
+			break
+	if index < 0:
+		menu_visible_items[menu_visible_items.size() - 1 if up else 0].grab_focus()
+		return
+	var next := index
+	if left and index % 2 == 1:
+		next = index - 1
+	elif right and index % 2 == 0 and index + 1 < menu_visible_items.size():
+		next = index + 1
+	elif up and index >= 2:
+		next = index - 2
+	elif down and index + 2 < menu_visible_items.size():
+		next = index + 2
+	elif down:
+		menu_resume.grab_focus()
+		return
+	menu_visible_items[next].grab_focus()
+
+func _menu_direction_slot(parent: Control, key: String, direction: String, at: Vector2, texture: Texture2D) -> void:
+	var slot := Panel.new()
+	slot.name = "Direction_" + key
+	slot.position = at
+	slot.size = Vector2(100, 100)
+	slot.add_theme_stylebox_override("panel", _box(Color(0.025, 0.075, 0.07, 0.85), Color("52695a"), 3))
+	parent.add_child(slot)
+	var icon := TextureRect.new()
+	icon.name = "Icon"
+	icon.texture = texture
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	slot.add_child(icon)
+	icon.position = Vector2(18, 5)
+	icon.size = Vector2(64, 64)
+	var label := _label(slot, direction, Vector2(0, 70), 11, MUTED)
+	label.name = "DirectionLabel"
+	label.size.x = 100
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	menu_stance_slots[key] = slot
+
+func _refresh_character_menu() -> void:
+	var prince := forest.player
+	menu_stats["Health"].text = "%d / %d" % [prince.health, prince.MAX_HEALTH]
+	menu_stats["Stamina"].text = "%d / %d" % [roundi(prince.stamina), roundi(prince.MAX_STAMINA)]
+	menu_stats["Magic"].text = "%d / %d" % [roundi(prince.magic), roundi(prince.MAX_MAGIC)] if prince.has_amulet or prince.stance == &"hunter" else "?"
+	menu_stats["Attack"].text = "1 / arrow" if prince.stance == &"hunter" else "1 / hit" if prince.has_sword and prince.stance == &"royal" else "0"
+	menu_stats["Counter"].text = str(prince.COUNTER_DAMAGE) if forest.has_steel_stance else "?"
+	menu_stats["Defense"].text = "%d%%" % prince.defense
+	menu_visible_items.clear()
+	for key in ["sword", "healing", "blood", "essence", "shakchunni_essence"]:
+		var available: bool = {"sword": prince.has_sword, "healing": prince.has_amulet, "blood": prince.has_blood_amulet, "essence": forest.has_discovered_essence or forest.essence > 0, "shakchunni_essence": forest.has_shakchunni_essence}[key]
+		var item: Button = menu_items[key]
+		item.visible = available
+		if available:
+			var index := menu_visible_items.size()
+			item.position = Vector2(36 + (index % 2) * 145, 150 + (index / 2) * 115)
+			menu_visible_items.append(item)
+	if menu_visible_items.is_empty():
+		menu_item_title.text = "Inventory empty"
+		menu_item_description.text = "Collect items on your journey."
+	else:
+		for key in menu_items:
+			if menu_items[key].has_focus() and menu_items[key].visible:
+				_describe_inventory_item(key)
+				break
+	for key in ["up", "left", "right", "down"]:
+		var slot: Panel = menu_stance_slots[key]
+		var icon: TextureRect = slot.get_node("Icon")
+		icon.visible = key == "left" or (key == "right" and forest.has_steel_stance) or (key == "up" and forest.has_hunter_stance)
+		var selected: bool = (key == "left" and prince.stance == &"royal") or (key == "right" and prince.stance == &"steel" and forest.has_steel_stance) or (key == "up" and prince.stance == &"hunter" and forest.has_hunter_stance)
+		slot.add_theme_stylebox_override("panel", _box(Color(0.09, 0.16, 0.11, 0.95) if selected else Color(0.025, 0.075, 0.07, 0.85), GOLD if selected else Color("52695a"), 3))
+		slot.tooltip_text = "Royal Stance" if key == "left" else "Steel Stance" if key == "right" and forest.has_steel_stance else "Hunter Stance" if key == "up" and forest.has_hunter_stance else "Empty"
+		var direction_label: Label = slot.get_node("DirectionLabel")
+		direction_label.text = ("LEFT  ROYAL" if key == "left" else "RIGHT  STEEL" if key == "right" and forest.has_steel_stance else "UP  HUNTER" if key == "up" and forest.has_hunter_stance else key.to_upper())
 
 func _build_overlay() -> void:
 	overlay = Control.new()

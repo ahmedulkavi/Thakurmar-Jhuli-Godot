@@ -6,11 +6,14 @@ signal health_changed(current: int, maximum: int)
 signal stamina_changed(current: float, maximum: float)
 signal magic_changed(current: float, maximum: float)
 signal sword_equipped
+signal blood_amulet_collected
 signal amulet_equipped
+signal resting_started
 signal healing_completed(amount: int)
 signal died
 signal stance_changed(stance: StringName)
 signal sound_requested(cue: StringName)
+signal sword_attack_started
 
 const STEEL_DEFENSE := 75
 const COUNTER_WINDOW := 0.28
@@ -23,6 +26,20 @@ const MAGIC_PER_HIT: float = 20.0
 const HEAL_MAGIC_COST: float = 40.0
 const HEAL_AMOUNT: int = 30
 const HEAL_CHANNEL_TIME: float = 0.9
+const HUNTER_ARROW_COST := 20.0
+const HUNTER_ROLL_STAMINA_COST := 30.0
+const HUNTER_MAGIC_REGEN := 8.0
+const HUNTER_ROLL_DURATION := 0.42
+const HUNTER_ARROW_SCRIPT = preload("res://scripts/hunter_arrow.gd")
+const WATER_START_X := 9300.0
+const DRY_HALL_X := 16500.0
+const HALL_APPROACH_X := DRY_HALL_X - 620.0
+const HALL_FLOOR_Y := 1040.0
+const WATERLINE_Y := 612.0
+const WATER_SURFACE_FEET := WATERLINE_Y + 62.0
+const WATER_FLOOR_FEET := 1070.0
+const SWIM_SPEED := 235.0
+const SWIM_ACCELERATION := 900.0
 const STAMINA_REGEN_RATE: float = 35.0
 const STAMINA_REGEN_DELAY: float = 0.50
 const STAMINA_EXHAUSTION_DELAY: float = 0.65
@@ -63,6 +80,7 @@ var magic: float = 0.0
 var stamina_regen_left: float = 0.0
 var has_sword: bool = false
 var has_amulet: bool = false
+var has_blood_amulet: bool = false
 var is_healing: bool = false
 var is_resting: bool = false
 var rest_art: Sprite2D
@@ -81,6 +99,10 @@ var next_attack_kind: StringName = &"slash"
 var chain_left: float = 0.0
 var attack_buffer_left: float = 0.0
 var hitstop_left: float = 0.0
+var roll_left := 0.0
+var held_by: Node2D
+var in_water := false
+var swim_entry := 0.0
 var climb_ladder: ForestLadder
 var is_climbing: bool = false
 var climb_visual: Node2D
@@ -111,6 +133,11 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if health <= 0:
 		return
+	if is_instance_valid(held_by):
+		invulnerable_left = maxf(0.0, invulnerable_left - delta)
+		velocity = Vector2.ZERO
+		_update_combat_visuals()
+		return
 	if is_resting:
 		velocity = Vector2.ZERO
 		rest_elapsed += delta
@@ -129,11 +156,30 @@ func _physics_process(delta: float) -> void:
 	swing_left = maxf(0.0, swing_left - combat_delta)
 	chain_left = maxf(0.0, chain_left - combat_delta)
 	attack_buffer_left = maxf(0.0, attack_buffer_left - delta)
+	if stance == &"hunter":
+		_set_magic(magic + HUNTER_MAGIC_REGEN * delta)
+		if Input.is_action_just_pressed("heal"):
+			roll()
+	roll_left = maxf(0.0, roll_left - delta)
 	_regenerate_stamina(delta)
 	heal_flash_left = maxf(0.0, heal_flash_left - delta)
 	queue_redraw()
 	combat_visual.tick(delta, velocity.x * (0.6 if stance == &"steel" else 1.0))
 	if _process_healing(delta):
+		return
+	var hall_blend := smoothstep(HALL_APPROACH_X, DRY_HALL_X, position.x)
+	var submerged := position.x >= WATER_START_X and position.x < DRY_HALL_X and position.y >= WATER_SURFACE_FEET - (12.0 if in_water else 0.0)
+	if hall_blend > 0.5 and is_on_floor():
+		submerged = false
+	if submerged != in_water:
+		in_water = submerged
+		floor_snap_length = 0.0 if in_water else 6.0
+		if in_water:
+			swim_entry = 0.0
+			buffer_left = 0.0
+			coyote_left = 0.0
+	if in_water:
+		_process_swimming(delta, hall_blend)
 		return
 	if _process_climbing(delta):
 		return
@@ -145,15 +191,19 @@ func _physics_process(delta: float) -> void:
 		buffer_left = jump_buffer
 	var direction := Input.get_axis("move_left", "move_right")
 	if knockback_left <= 0.0:
+		var wading := smoothstep(WATERLINE_Y, WATER_SURFACE_FEET, position.y) if position.x >= WATER_START_X and position.x < DRY_HALL_X else 0.0
+		wading *= 1.0 - hall_blend
 		var movement_scale := 0.35 if swing_left > 0.0 and grounded else 1.0
-		velocity.x = move_toward(velocity.x, direction * speed * movement_scale, (acceleration if direction else drag) * delta)
+		velocity.x = move_toward(velocity.x, direction * lerpf(speed, SWIM_SPEED, wading) * movement_scale, (acceleration if direction else drag) * delta)
 		if _is_striking() and grounded:
 			velocity.x = facing * (100.0 if attack_kind == &"thrust" else 45.0) + direction * 60.0
 		if hitstop_left > 0.0 and grounded:
 			velocity.x = 0.0
+	if roll_left > 0.0:
+		velocity.x = facing * 440.0
 	if not is_zero_approx(slide_direction):
 		velocity.x = slide_direction * maxf(absf(velocity.x), rock_slide_speed)
-	if absf(direction) > 0.01 and swing_left <= 0.0:
+	if absf(direction) > 0.01 and swing_left <= 0.0 and roll_left <= 0.0:
 		facing = signf(direction)
 		animation.flip_h = facing < 0.0
 	velocity.y = minf(velocity.y + gravity * delta, 1000.0)
@@ -194,6 +244,56 @@ func _physics_process(delta: float) -> void:
 	_update_combat_visuals()
 	$Shadow.visible = landed
 
+func _process_swimming(delta: float, hall_blend: float) -> void:
+	var intent := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	if Input.is_action_pressed("jump"):
+		intent.y -= 1.0
+	intent = intent.limit_length(1.0)
+	swim_entry = minf(1.0, swim_entry + delta / 0.42)
+	if absf(intent.x) > 0.01 and roll_left <= 0.0 and swing_left <= 0.0:
+		facing = signf(intent.x)
+		animation.flip_h = facing < 0.0
+	if knockback_left <= 0.0:
+		var target := intent * SWIM_SPEED
+		if intent.y < 0.0:
+			target.y *= smoothstep(WATER_SURFACE_FEET, WATER_SURFACE_FEET + 56.0, position.y)
+		elif is_zero_approx(intent.y):
+			target.y = -8.0 * smoothstep(WATER_SURFACE_FEET, WATER_SURFACE_FEET + 40.0, position.y)
+		# Buoyancy ebbs at the palace entrance until the prince can plant his feet.
+		target.y = lerpf(target.y, 420.0, hall_blend)
+		velocity = velocity.lerp(target, 1.0 - exp(-SWIM_ACCELERATION / SWIM_SPEED * delta))
+	if roll_left > 0.0:
+		velocity = Vector2(facing * 440.0, 0.0)
+	move_and_slide()
+	var swim_floor := lerpf(WATER_FLOOR_FEET, HALL_FLOOR_Y, hall_blend)
+	if position.y > swim_floor:
+		position.y = swim_floor
+		velocity.y = minf(velocity.y, 0.0)
+	elif position.y < WATER_SURFACE_FEET and not is_on_floor():
+		velocity.y = maxf(velocity.y, 0.0)
+	if Input.is_action_just_pressed("attack"):
+		if not attack() and stance == &"royal" and has_sword and cooldown_left <= 0.14 and stamina > 0.0:
+			attack_buffer_left = 0.18
+	if attack_buffer_left > 0.0 and cooldown_left <= 0.0 and swing_left <= 0.0:
+		attack()
+	if _is_striking() and hitstop_left <= 0.0:
+		_hit_sword_targets()
+	_update_combat_visuals()
+	$Shadow.hide()
+
+func try_grab(holder: Node2D) -> bool:
+	if is_instance_valid(held_by) or god_mode or invulnerable_left > 0 or health <= 0 or not in_water:
+		return false
+	held_by = holder
+	_cancel_healing()
+	velocity = Vector2.ZERO
+	swing_left = 0
+	roll_left = 0
+	counter_window_left = 0
+	attack_buffer_left = 0
+	chain_left = 0
+	return true
+
 func _landing_sound() -> StringName:
 	# Use the floor contact rather than a wall the prince may touch at the same time.
 	for i in range(get_slide_collision_count()):
@@ -226,9 +326,10 @@ func equip_amulet() -> void:
 	amulet_equipped.emit()
 
 func set_stance(next: StringName, animate: bool = true) -> void:
-	if next == stance or next not in [&"royal", &"steel"]:
+	if is_instance_valid(held_by) or next == stance or next not in [&"royal", &"steel", &"hunter"]:
 		return
 	stance = next
+	roll_left = 0.0
 	var current_animation := animation.animation
 	var current_frame := animation.frame
 	var progress := animation.frame_progress
@@ -236,7 +337,8 @@ func set_stance(next: StringName, animate: bool = true) -> void:
 	animation.play(current_animation)
 	animation.set_frame_and_progress(current_frame, progress)
 	combat_visual.set_steel(stance == &"steel")
-	climb_visual.frames = climb_visual.steel_frames if stance == &"steel" else climb_visual.royal_frames
+	combat_visual.set_hunter(stance == &"hunter")
+	climb_visual.frames = climb_visual.hunter_frames if stance == &"hunter" else climb_visual.steel_frames if stance == &"steel" else climb_visual.royal_frames
 	defense = STEEL_DEFENSE if stance == &"steel" else 0
 	counter_window_left = 0.0
 	counter_attack = false
@@ -245,14 +347,31 @@ func set_stance(next: StringName, animate: bool = true) -> void:
 	chain_left = 0.0
 	stance_flash_left = 0.6 if animate else 0.0
 	stance_changed.emit(stance)
+	if stance == &"hunter":
+		_set_magic(magic, true)
 	if animate:
 		sound_requested.emit(&"stance")
 	_update_combat_visuals()
 	queue_redraw()
 
 func attack() -> bool:
-	if not has_sword or health <= 0 or get_tree().paused or is_climbing or is_healing or is_resting:
+	if is_instance_valid(held_by) or not has_sword or health <= 0 or get_tree().paused or is_climbing or is_healing or is_resting:
 		return false
+	if stance == &"hunter":
+		if cooldown_left > 0.0 or roll_left > 0.0 or magic < HUNTER_ARROW_COST:
+			return false
+		_set_magic(magic - HUNTER_ARROW_COST)
+		cooldown_left = 0.38
+		swing_left = 0.30
+		var arrow := Node2D.new()
+		arrow.set_script(HUNTER_ARROW_SCRIPT)
+		arrow.position = position + (Vector2(facing * 65.0, -66.0) if in_water else Vector2(facing * 50.0, -75.0))
+		arrow.underwater = in_water
+		arrow.direction = facing
+		arrow.owner_prince = self
+		get_parent().add_child(arrow)
+		sound_requested.emit(&"hunter_bow")
+		return true
 	if stance == &"steel":
 		if cooldown_left > 0.0 or swing_left > 0.0 or stamina <= 0.0:
 			return false
@@ -277,6 +396,20 @@ func attack() -> bool:
 	cooldown_left = ATTACK_COOLDOWN
 	swing_targets.clear()
 	sound_requested.emit(&"swing")
+	sword_attack_started.emit()
+	return true
+
+func roll() -> bool:
+	if is_instance_valid(held_by) or stance != &"hunter" or stamina < HUNTER_ROLL_STAMINA_COST or roll_left > 0.0 or is_resting or is_climbing or is_healing or health <= 0 or get_tree().paused:
+		return false
+	_set_stamina(stamina - HUNTER_ROLL_STAMINA_COST)
+	stamina_regen_left = STAMINA_REGEN_DELAY
+	roll_left = HUNTER_ROLL_DURATION
+	invulnerable_left = maxf(invulnerable_left, HUNTER_ROLL_DURATION)
+	swing_left = 0.0
+	attack_buffer_left = 0.0
+	stance_flash_left = 0.24
+	sound_requested.emit(&"hunter_roll")
 	return true
 
 func _set_stamina(value: float) -> void:
@@ -293,6 +426,8 @@ func _regenerate_stamina(delta: float) -> void:
 		_set_stamina(stamina + STAMINA_REGEN_RATE * recovery_delta)
 
 func _is_striking() -> bool:
+	if stance == &"hunter":
+		return false
 	var elapsed := SWING_DURATION - swing_left
 	var starts := THRUST_ACTIVE_START if attack_kind == &"thrust" else SLASH_ACTIVE_START
 	return swing_left > 0.0 and elapsed >= starts and elapsed < ACTIVE_END
@@ -323,7 +458,9 @@ func _hit_sword_targets() -> void:
 func take_damage(amount: int, source: Vector2, attacker: Node2D = null) -> bool:
 	if health <= 0 or is_resting or invulnerable_left > 0.0 or amount <= 0 or get_tree().paused:
 		return false
-	if stance == &"steel" and counter_window_left > 0.0 and is_instance_valid(attacker) and attacker.is_in_group("combat_targets") and attacker.health > 0:
+	var boss_block := stance == &"steel" and is_instance_valid(attacker) and attacker.has_method("stun_from_block")
+	var counter_in_range: bool = not boss_block or attacker.can_counter_from(global_position)
+	if stance == &"steel" and counter_window_left > 0.0 and is_instance_valid(attacker) and attacker.is_in_group("combat_targets") and attacker.health > 0 and counter_in_range:
 		counter_window_left = 0.0
 		counter_attack = true
 		facing = signf(attacker.global_position.x - global_position.x) if absf(attacker.global_position.x - global_position.x) > 1.0 else facing
@@ -337,6 +474,12 @@ func take_damage(amount: int, source: Vector2, attacker: Node2D = null) -> bool:
 		combat_visual.add_impact(attacker.global_position + Vector2(0, -42))
 		stance_flash_left = 0.35
 		sound_requested.emit(&"counter")
+		return true
+	if boss_block and counter_window_left > 0.0:
+		counter_window_left = 0.0
+		attacker.stun_from_block()
+		stance_flash_left = 0.35
+		sound_requested.emit(&"block")
 		return true
 	if god_mode:
 		return false
@@ -368,9 +511,21 @@ func take_damage(amount: int, source: Vector2, attacker: Node2D = null) -> bool:
 
 func _update_combat_visuals() -> void:
 	var tint := Color(1.0, 0.65, 0.5, 0.55) if invulnerable_left > 0.0 and fmod(invulnerable_left, 0.16) > 0.08 else Color.WHITE
+	if roll_left > 0.0:
+		tint = Color(0.72, 1.0, 0.79)
 	if is_healing:
 		tint = Color(0.68, 0.92, 1.0)
 	animation.modulate = tint
+	if in_water:
+		animation.hide()
+		var weapon: StringName = &""
+		var progress := 0.0
+		if swing_left > 0.0:
+			weapon = &"bow" if stance == &"hunter" else attack_kind
+			var duration := 0.30 if stance == &"hunter" else SWING_DURATION
+			progress = 1.0 - swing_left / duration
+		combat_visual.show_swim(stance, facing, velocity, tint, swim_entry, has_sword, weapon, progress)
+		return
 	if is_healing:
 		if has_sword:
 			animation.hide()
@@ -383,6 +538,11 @@ func _update_combat_visuals() -> void:
 	var guarding := has_sword and is_on_floor() and absf(velocity.x) < 15.0 and landing_left <= 0.0 and knockback_left <= 0.0
 	if has_sword:
 		animation.hide()
+		if stance == &"hunter":
+			var hunter_action: StringName = &"roll" if roll_left > 0.0 else &"fire" if swing_left > 0.0 else &"idle"
+			var progress := 1.0 - roll_left / HUNTER_ROLL_DURATION if roll_left > 0.0 else 1.0 - swing_left / 0.30 if swing_left > 0.0 else 0.0
+			combat_visual.show_hunter(hunter_action, progress, facing, tint, animation.animation, absf(velocity.x) > 15.0)
+			return
 		if swing_left > 0.0:
 			combat_visual.show_pose(attack_kind, SWING_DURATION - swing_left, facing, tint, _is_striking() and hitstop_left <= 0.0)
 		elif stance == &"steel" and is_on_floor() and knockback_left <= 0.0:
@@ -405,10 +565,13 @@ func _rock_slide_direction() -> float:
 	return 0.0
 
 func reset_to(start: Vector2) -> void:
+	held_by = null
 	stop_resting()
 	_stop_climbing()
 	set_stance(&"royal", false)
 	position = start
+	in_water = false
+	floor_snap_length = 6.0
 	velocity = Vector2.ZERO
 	coyote_left = 0.0
 	buffer_left = 0.0
@@ -421,6 +584,7 @@ func reset_to(start: Vector2) -> void:
 	stamina_regen_left = 0.0
 	has_sword = false
 	has_amulet = false
+	has_blood_amulet = false
 	is_healing = false
 	healing_elapsed = 0.0
 	heal_flash_left = 0.0
@@ -433,6 +597,7 @@ func reset_to(start: Vector2) -> void:
 	chain_left = 0.0
 	attack_buffer_left = 0.0
 	hitstop_left = 0.0
+	roll_left = 0.0
 	combat_visual.reset_pose()
 	swing_targets.clear()
 	animation.modulate = Color.WHITE
@@ -478,6 +643,7 @@ func begin_resting(at: Vector2, texture: Texture2D) -> void:
 	# The pose's hips meet the fountain rim while the feet hang in front.
 	rest_art.position = Vector2(0, -68)
 	rest_art.show()
+	resting_started.emit()
 
 func stop_resting() -> void:
 	if not is_resting:
@@ -492,11 +658,13 @@ func stop_resting() -> void:
 func recover_at_checkpoint(at: Vector2) -> void:
 	var sword := has_sword
 	var amulet := has_amulet
+	var blood_amulet := has_blood_amulet
 	var saved_magic := magic
 	var saved_stance := stance
 	reset_to(at)
 	has_sword = sword
 	has_amulet = amulet
+	has_blood_amulet = blood_amulet
 	set_stance(saved_stance, false)
 	_set_magic(saved_magic, true)
 	_update_combat_visuals()
@@ -531,7 +699,7 @@ func _process_healing(delta: float) -> bool:
 			healing_elapsed = 0.0
 			_update_combat_visuals()
 		return true
-	if Input.is_action_pressed("heal") and has_amulet and health < MAX_HEALTH and magic >= HEAL_MAGIC_COST and is_on_floor() and swing_left <= 0.0 and knockback_left <= 0.0 and not is_climbing:
+	if stance != &"hunter" and Input.is_action_pressed("heal") and has_amulet and health < MAX_HEALTH and magic >= HEAL_MAGIC_COST and is_on_floor() and swing_left <= 0.0 and knockback_left <= 0.0 and not is_climbing:
 		is_healing = true
 		healing_elapsed = 0.0
 		velocity = Vector2.ZERO
@@ -549,7 +717,7 @@ func _cancel_healing() -> void:
 
 func _draw() -> void:
 	if stance_flash_left > 0.0:
-		var light := Color(0.72, 0.87, 1.0) if stance == &"steel" else Color(1.0, 0.77, 0.28)
+		var light := Color(0.48, 1.0, 0.59) if stance == &"hunter" else Color(0.72, 0.87, 1.0) if stance == &"steel" else Color(1.0, 0.77, 0.28)
 		var progress := 1.0 - stance_flash_left / 0.6
 		light.a = clampf(stance_flash_left / 0.6, 0.0, 1.0) * 0.85
 		draw_arc(Vector2(0, -65), 25.0 + 50.0 * progress, 0, TAU, 40, light, 4.0, true)

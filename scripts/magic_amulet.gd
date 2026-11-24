@@ -1,8 +1,8 @@
 class_name MagicAmulet
 extends Area2D
-## Floating healing amulet collected on the upper island.
+## Floating blood amulet collected on the upper island.
 
-const AMULET_TEXTURE = preload("res://assets/healing-amulet.png")
+const AMULET_TEXTURE = preload("res://assets/blood-amulet.png")
 
 var collected := false
 var elapsed := 0.0
@@ -23,7 +23,7 @@ func _ready() -> void:
 	glow.texture = preload("res://scenes/soft_glow.tres")
 	glow.position.y = -62
 	glow.scale = Vector2(1.8, 1.8)
-	glow.modulate = Color(0.26, 0.77, 1.0, 0.38)
+	glow.modulate = Color(1.0, 0.12, 0.18, 0.38)
 	add_child(glow)
 	art = Sprite2D.new()
 	art.texture = AMULET_TEXTURE
@@ -32,12 +32,12 @@ func _ready() -> void:
 	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	add_child(art)
 	var label := Label.new()
-	label.text = "HEALING AMULET"
+	label.text = "BLOOD AMULET"
 	label.position = Vector2(-90, -124)
 	label.size = Vector2(180, 22)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 11)
-	label.add_theme_color_override("font_color", Color("bdefff"))
+	label.add_theme_color_override("font_color", Color("ffd3cf"))
 	label.add_theme_constant_override("outline_size", 4)
 	label.add_theme_color_override("font_outline_color", Color("102526"))
 	add_child(label)
@@ -55,7 +55,8 @@ func _on_body_entered(body: Node2D) -> void:
 	if collected or not body is ForestPrince or body.health <= 0:
 		return
 	collected = true
-	body.equip_amulet()
+	body.has_blood_amulet = true
+	body.blood_amulet_collected.emit()
 	hide()
 
 func reset_pickup() -> void:

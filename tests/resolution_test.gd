@@ -15,6 +15,7 @@ func _run() -> void:
 	root.add_child(game)
 	current_scene = game
 	await _frames(12)
+	_check(is_equal_approx(game.forest.camera.position.y, 360.0), "Ground-level camera keeps the forest scene in frame")
 	if DisplayServer.get_name() != "headless":
 		_check(root.mode == Window.MODE_MAXIMIZED, "Game starts maximized to fit the monitor")
 	else:
@@ -39,15 +40,16 @@ func _run() -> void:
 	root.size = Vector2i(1920, 1080)
 	await _frames(8)
 	_check_render_size("paused resize")
-	_check(paused and game.forest.player.position == paused_position and game.overlay.visible, "Paused resize keeps the game and overlay state")
-	_click(game.primary)
+	_check(paused and game.forest.player.position == paused_position and game.character_menu.visible, "Paused resize keeps the game and overlay state")
+	_click(game.menu_resume)
 	await _frames(4)
 	_check(not paused and game.mode == &"playing", "Continue button receives mouse clicks at the resized pixel coordinates")
 	if paused:
 		game.resume_journey()
-	_click(game.pause_button)
+	_check(not game.pause_button.visible, "Pause button stays hidden after resizing")
+	_key(KEY_ESCAPE)
 	await _frames(4)
-	_check(paused and game.mode == &"paused", "Pause button receives mouse clicks after resizing")
+	_check(paused and game.mode == &"paused", "Escape pauses after resizing")
 	game.resume_journey()
 
 	# Exercise F11 on the real display, including restoration of a maximized window.

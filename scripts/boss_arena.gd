@@ -6,6 +6,7 @@ signal encounter_reset
 signal boss_defeated
 
 const FOG_X := 7060.0
+const ENTRANCE_BLEND_RADIUS := 300.0
 const BOSS_X := 8510.0
 const ARENA_END := 9200.0
 const BACKGROUND = preload("res://assets/shakchunni-arena.png")
@@ -16,6 +17,7 @@ var player: ForestPrince
 var boss: CharacterBody2D
 var gate: StaticBody2D
 var gate_collision: CollisionShape2D
+var exit_collision: CollisionShape2D
 var prompt: Label
 var active := false
 var beaten := false
@@ -29,14 +31,34 @@ func _ready() -> void:
 	background.name = "DarkForest"
 	background.texture = BACKGROUND
 	background.centered = false
-	background.position = Vector2(FOG_X, -260)
-	background.scale = Vector2((ARENA_END - FOG_X) / BACKGROUND.get_width(), 980.0 / BACKGROUND.get_height())
-	background.z_index = -5
+	var backdrop_start := FOG_X - ENTRANCE_BLEND_RADIUS
+	background.position = Vector2(backdrop_start, -260)
+	background.scale = Vector2((ARENA_END - backdrop_start) / BACKGROUND.get_width(), 980.0 / BACKGROUND.get_height())
+	var edge_shader := Shader.new()
+	edge_shader.code = """
+		shader_type canvas_item;
+		varying float world_x;
+		void vertex() { world_x = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).x; }
+		uniform float bank_end;
+		uniform vec2 entrance;
+		void fragment() {
+			float fade_in = smoothstep(entrance.x, entrance.y, world_x);
+			float fade_out = 1.0 - smoothstep(bank_end - 420.0, bank_end, world_x);
+			COLOR.a *= fade_in * fade_out;
+		}
+		"""
+	var edge_material := ShaderMaterial.new()
+	edge_material.shader = edge_shader
+	edge_material.set_shader_parameter("bank_end", ARENA_END)
+	edge_material.set_shader_parameter("entrance", Vector2(backdrop_start, FOG_X + ENTRANCE_BLEND_RADIUS))
+	background.material = edge_material
+	background.z_index = -6 # Behind the walkable forest floor, above the parallax trees.
 	add_child(background)
 	var darkness := Polygon2D.new()
 	darkness.name = "ArenaDarkness"
-	darkness.polygon = PackedVector2Array([Vector2(FOG_X, -260), Vector2(ARENA_END, -260), Vector2(ARENA_END, 720), Vector2(FOG_X, 720)])
+	darkness.polygon = PackedVector2Array([Vector2(backdrop_start, -260), Vector2(ARENA_END, -260), Vector2(ARENA_END, 720), Vector2(backdrop_start, 720)])
 	darkness.color = Color(0.012, 0.025, 0.04, 0.48)
+	darkness.material = edge_material
 	darkness.z_index = -1
 	add_child(darkness)
 	for pos in [Vector2(7280, 505), Vector2(7460, 415), Vector2(7640, 325), Vector2(7820, 415), Vector2(7990, 325), Vector2(8160, 235), Vector2(8370, 315), Vector2(8620, 410)]:
@@ -59,6 +81,17 @@ func _ready() -> void:
 	gate_collision.shape = wall
 	gate.add_child(gate_collision)
 	add_child(gate)
+	var exit_gate := StaticBody2D.new()
+	exit_gate.name = "RiverExitBarrier"
+	exit_gate.position = Vector2(ARENA_END, 400)
+	exit_gate.collision_layer = 1
+	exit_gate.collision_mask = 0
+	exit_collision = CollisionShape2D.new()
+	var exit_wall := RectangleShape2D.new()
+	exit_wall.size = Vector2(24, 1300)
+	exit_collision.shape = exit_wall
+	exit_gate.add_child(exit_collision)
+	add_child(exit_gate)
 	prompt = Label.new()
 	prompt.text = "E / RB  TRAVERSE THE FOG"
 	prompt.position = Vector2(FOG_X - 250, 355)
@@ -99,6 +132,7 @@ func reset_encounter() -> void:
 	beaten = false
 	victory_delay = -1.0
 	gate_collision.set_deferred("disabled", false)
+	exit_collision.set_deferred("disabled", false)
 	boss.reset_boss()
 	encounter_reset.emit()
 
@@ -106,6 +140,7 @@ func _on_boss_defeated() -> void:
 	active = false
 	beaten = true
 	gate_collision.set_deferred("disabled", true)
+	exit_collision.set_deferred("disabled", true)
 	victory_delay = 1.6
 
 func _make_island(at: Vector2) -> void:

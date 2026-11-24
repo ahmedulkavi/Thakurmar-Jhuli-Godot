@@ -55,21 +55,18 @@ func _run() -> void:
 	await _frames(100)
 	_check(prince.is_resting and prince.position == seated_at and not prince.take_damage(10, Vector2.ZERO), "The prince stays seated and safe until a new button press")
 	_check(prince.rest_art.scale != initial_pose and water.elapsed > water_time and leaves.elapsed > leaves_time, "Resting breathes while fountain water and distant leaves animate")
-	game.pause_journey()
-	var frozen_pose := prince.rest_art.scale
-	water_time = water.elapsed
-	leaves_time = leaves.elapsed
-	await _frames(30)
-	_check(prince.rest_art.scale == frozen_pose and water.elapsed == water_time and leaves.elapsed == leaves_time, "Pause freezes the resting pose, water and background leaves")
-	game.resume_journey()
+	_check(game.mode == &"resting" and game.rest_menu.visible and game.rest_buttons.size() == 3, "Rest opens a three-option menu")
+	game.rest_buttons[1].pressed.emit()
+	_check(game.mode == &"skill_tree" and game.skill_tree.visible and paused, "Meditate opens the skill tree")
+	game._close_skill_tree()
+	_check(game.mode == &"resting" and not paused, "Closing skill tree returns to resting menu")
 	await _capture("fountain-rest")
 	_key(KEY_E, false)
 	await _frames(2)
 	_check(prince.is_resting, "Releasing the interaction key does not end the rest")
-	_key(KEY_SPACE, true)
+	game.rest_buttons[2].pressed.emit()
 	await _frames(2)
-	_key(KEY_SPACE, false)
-	_check(not prince.is_resting and not prince.rest_art.visible and not paused and prince.health == 100, "Another button stands the prince up and resumes play")
+	_check(not prince.is_resting and not prince.rest_art.visible and not paused and prince.health == 100, "Leave stands the prince up and resumes play")
 	prince.take_damage(1000, prince.position + Vector2(100, 0))
 	_check(game.mode == &"defeated" and paused, "Death still opens the retry screen")
 	game.primary.pressed.emit()
@@ -91,12 +88,13 @@ func _run() -> void:
 	shoulder.pressed = false
 	Input.parse_input_event(shoulder)
 	await _frames(2)
+	game.rest_buttons[2].grab_focus()
 	var face_button := InputEventJoypadButton.new()
 	face_button.button_index = JOY_BUTTON_A
 	face_button.pressed = true
 	Input.parse_input_event(face_button)
 	await _frames(2)
-	_check(not prince.is_resting and game.mode == &"playing", "Controller face button stands up without starting another action")
+	_check(not prince.is_resting and game.mode == &"playing", "Controller confirms Leave without starting another action")
 	for failure in failures:
 		push_error(failure)
 	if failures.is_empty():

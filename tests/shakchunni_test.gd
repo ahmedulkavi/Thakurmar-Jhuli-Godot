@@ -99,7 +99,30 @@ func _run() -> void:
 	_check(prince.attack(), "Steel opens counter window against boss")
 	var boss_before: int = boss.health
 	await _frames(13)
-	_check(boss.health == boss_before - prince.COUNTER_DAMAGE and prince.health == before and boss.state == &"recover", "Steel counter interrupts the reaching strike")
+	_check(boss.health == boss_before and prince.health == before and prince.knockback_left == 0.0 and boss.state == &"recover", "Distant timed block prevents damage and stuns without flinching")
+	_check(game.sound_effects.SOUNDS.has(&"block"), "Metallic block sound is available")
+	prince.invulnerable_left = 0.0
+	prince.knockback_left = 0.0
+	prince.position = boss.position + Vector2(-180, -263)
+	prince.cooldown_left = 0.0
+	prince.swing_left = 0.0
+	boss._set_state(&"strike", 0.3)
+	before = prince.health
+	_check(prince.attack(), "Steel opens a close counter window")
+	prince.take_damage(boss.BASE_DAMAGE, boss.global_position, boss)
+	_check(boss.health == boss_before - prince.COUNTER_DAMAGE and prince.health == before and boss.state == &"recover", "Close timed counter damages and interrupts boss")
+	prince.counter_window_left = 0.0
+	prince.invulnerable_left = 0.0
+	prince.position = Vector2(7500, forest.GROUND_Y)
+	boss._set_state(&"strike", 0.3)
+	boss_before = boss.health
+	before = prince.health
+	var cues: Array[StringName] = []
+	var record_cue := func(cue: StringName) -> void: cues.append(cue)
+	prince.sound_requested.connect(record_cue)
+	prince.take_damage(boss.BASE_DAMAGE, boss.global_position, boss)
+	prince.sound_requested.disconnect(record_cue)
+	_check(boss.health == boss_before and boss.state == &"strike" and prince.health == before - 7 and cues.has(&"hurt"), "Untimed distant hit deals reduced damage with hurt sound and no stun")
 	prince.set_stance(&"royal")
 	prince.god_mode = true
 	boss.attack_count = 3
@@ -146,7 +169,7 @@ func _run() -> void:
 	_check(arena.active and boss.active, "Controller RB re-enters after retry")
 	boss.take_damage(100, prince.global_position)
 	await _frames(105)
-	_check(arena.beaten and game.mode == &"complete" and paused, "Defeating boss completes journey")
+	_check(arena.beaten and game.mode == &"playing" and not paused and forest.get_node_or_null("ShakchunniEssence") != null, "Defeating boss drops Essence of Shakchunni and play continues")
 	for failure in failures:
 		push_error(failure)
 	if failures.is_empty():

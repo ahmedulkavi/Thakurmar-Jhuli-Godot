@@ -11,15 +11,18 @@ const SOUNDS := {
 	&"hit": preload("res://assets/sfx/hit.wav"),
 	&"hurt": preload("res://assets/sfx/hurt.wav"),
 	&"counter": preload("res://assets/sfx/counter.wav"),
+	&"block": preload("res://assets/sfx/block.wav"),
 	&"item": preload("res://assets/sfx/item.wav"),
 	&"essence": preload("res://assets/sfx/essence.wav"),
 	&"heal": preload("res://assets/sfx/heal.wav"),
 	&"stance": preload("res://assets/sfx/stance.wav"),
+	&"hunter_bow": preload("res://assets/sfx/hunter_bow.wav"),
+	&"hunter_roll": preload("res://assets/sfx/hunter_roll.wav"),
 }
 const LEVELS := {&"jump": -13.0, &"land": -17.0, &"swing": -13.0, &"hit": -12.0,
 	&"land_grass": -16.0, &"land_wood": -16.0, &"land_stone": -16.0,
-	&"hurt": -11.0, &"counter": -10.0, &"item": -12.0, &"essence": -19.0,
-	&"heal": -14.0, &"stance": -17.0}
+	&"hurt": -11.0, &"counter": -10.0, &"block": -11.0, &"item": -12.0, &"essence": -19.0,
+	&"heal": -14.0, &"stance": -17.0, &"hunter_bow": -13.0, &"hunter_roll": -18.0}
 
 var voices: Array[AudioStreamPlayer] = []
 var next_voice := 0
